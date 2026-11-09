@@ -1,0 +1,301 @@
+RICK3D - Hommage Rick Dangerous 2 en 2.5D - Atari Falcon 030
+=============================================================
+Projet amateur, non commercial, realise en hommage au jeu d'origine.
+
+CREDITS ET SOURCES
+------------------
+Jeu d'origine :
+  Rick Dangerous 2 (c) 1990 Core Design, edite par MicroStyle.
+  Niveau 1 "Hyde Park", personnage de Rick, ennemis et mecanismes
+  (lasers, boutons, ascenseurs, bonbonnes...) : tout vient de leur jeu.
+
+Plan du niveau :
+  "Hyde Park - the solution", plan complet du niveau par Jim Waterman,
+  site The Rick Dangerous Resource : https://rickdangerous.co.uk/
+  (dossier "level original", converti en LEVEL1.MAP par MAPCONV.PY).
+
+Versions Atari ST de reference (dossier "level original\C") :
+  RICKDA2  : version Gamex pour disque dur, par PP (2011).
+  RICKD2JY : version HAGA, par PP (2011), conversion HAGA par JY (2022).
+
+Replay musical :
+  AMIGADSP.S / AMIGADSP.P56 : "Amiga DSP-Replay" du MegaPlayer,
+  par Simplet / FATAL DESIGN (lecteur de .MOD sur le DSP 56001 du Falcon).
+  Le fichier est utilise tel quel ; MUSIQUE.S n'est que l'interface.
+
+Musiques (dossier ZIK) :
+  chipmunk.mod  "chipmunks"   par Jester / Sanity (Volker Tripp)
+  ELYSIUM.MOD   "elysium"     par Jester / Sanity (Volker Tripp)
+  CYBERIDE.MOD  "cyberride"   par Jester / Sanity (Volker Tripp)
+  TRANSLOG.MOD  "translogic"  par Jora / B.M.T (Sven Bauer)
+  CRASH1.MOD    "RUNAWAY"     auteur non indique dans le module
+  (credits releves dans les noms d'instruments des modules ;
+   Jester demande d'etre credite pour l'utilisation de ses musiques)
+
+Outils :
+  Assembleur : vasm (Volker Barthelmann, Frank Wille), syntaxe Devpac 3
+  (HiSoft). Tests : emulateur Hatari. Convertisseur : Python 3.
+  Editeur de niveau : OUTILS\EDITEUR.HTML, ecrit pour ce projet
+  (a ouvrir dans Edge ou Chrome).
+
+Code de RICK3D (moteur 2.5D, sources .S, editeur, MAPCONV) :
+  Haltero / Abstract, avec l'aide de Claude (Anthropic).
+
+FICHIERS
+--------
+RICK3D.PRG    : programme assemble, a lancer depuis ce dossier
+RICK3D.S      : fichier principal (inclut tous les autres .S)
+PARAMS.S      : TOUS LES REGLAGES (volume musique, saut, munitions,
+                vitesses, profondeurs...) : c'est le seul a modifier
+INIT.S CLAVIER.S ECRAN.S HUD.S TEXTE.S NIVEAU.S RICK.S DESSRICK.S
+RENDU3D.S DECOR.S PLATEF.S PIEGES.S ARMES.S SONS.S MUSIQUE.S
+                : le moteur, une partie par fichier
+DONNEES.S / VARIABLE.S : donnees (couleurs, motifs) / variables
+AMIGADSP.S    : replay DSP du MegaPlayer par Simplet / FATAL DESIGN
+AMIGADSP.P56  : programme DSP du replay (inclus par AMIGADSP.S)
+ACCUEIL.S     : page d'accueil (titre, credits, touches) avant le jeu,
+                comme celle de 3DREAMS : ESPACE = jouer, ESC = bureau
+DSP3D.S       : calculs 3D par le DSP (comme CUBEDSP) : dialogue avec R3D
+R3D.P56       : programme DSP des calculs 3D (inclus par DSP3D.S), charge
+                avec celui de Simplet (un seul Dsp_ExecProg)
+OUTILS\R3D.A56  : source DSP 56001 de R3D.P56
+OUTILS\ASM56.PY : petit assembleur DSP 56001 (Python) qui fait R3D.P56 :
+                python ASM56.PY R3D.A56 ..\R3D.P56
+                (verifie : il redonne CUBE3D.P56 de CUBEDSP a l'octet pres)
+LEVEL\LEVEL1.MAP : niveau 1, HYDE PARK (texte, modifiable a la main
+                ou avec l'editeur)
+LEVEL\TILES.DAT  : apparence des tuiles (cree par l'editeur, facultatif)
+LEVEL\LEVEL1_APERCU.PNG : plan d'origine + tuiles reconnues, cote a cote
+OUTILS\EDITEUR.HTML : editeur de niveau et de tuiles ; onglet "Apparence des
+                tuiles" : couleurs, formes 3D des objets (et de Rick), dessins 8x8
+                , hublot (tuile N : couleurs, largeurs, reliefs, profondeur,
+                etoiles, rivets, reflets), couleurs de la vue de dos
+                -> LEVEL\TILES.DAT (version 7), lu par le jeu au demarrage
+                (les fichiers des versions precedentes sont toujours acceptes)
+OUTILS\MAPCONV.PY : convertit les plans PNG (dossier level) en .MAP
+ZIK\          : les musiques (*.MOD), jouees par ordre alphabetique,
+                la suivante demarre seule a la fin d'un module.
+                Ajouter / retirer des .MOD ici, sans toucher au code.
+
+Video : VGA 320x240 True Color plein ecran.
+        En RGB/TV : 320x200, on voit le bas de l'ecran (plafond coupe).
+
+Niveau :
+  Carte de 160 x 256 tuiles de 8x8 (comme l'original), 32 x 24 tuiles par
+  ecran affichees a 10 pixels. Les ecrans basculent dans les 4 directions
+  quand Rick sort entierement de l'ecran (alignes sur le bas du niveau).
+  Rick reapparait a l'entree de l'ecran ou il est mort.
+  Tuiles du .MAP :  # roche   F cadre metallique   (blocs pleins)
+                    . fond    k fond noir           (vide)
+                    = passerelle   - barre   G poutre verte  (plateformes :
+                      on se pose dessus, on passe a travers par dessous)
+                    H echelle / mat a grimper
+                    g pelouse (sol plein, 2 dernieres rangees du parc)
+                    M mat a grimper (comme une echelle, gris)
+                    T tonneau (plein, on peut monter dessus)
+                    u tuyau decor   w tuyau sur lequel on marche
+                    N hublot : peindre un rectangle de N (3 x 3 tuiles ou
+                      plus) ; le cadre orange rivete (1 tuile d'epaisseur),
+                      les coins et la vitre etoilee se choisissent tout
+                      seuls d'apres les voisins (on passe devant)
+                    U tuyau a grimper : ses parties VERTICALES (3 tuiles
+                      ou plus) s'escaladent, sur les parties horizontales
+                      on marche dessus (comme dans Rick Dangerous 2)
+  1re ligne utile : largeur hauteur colonne ligne (depart de Rick).
+  Ecrans : 32 colonnes fixes (on change d'ecran quand Rick sort).
+  Option GLISSEMENT (touche G) : quand Rick marche vers un bord et arrive a
+  6 tuiles, la carte glisse de 8 tuiles (un quart d'ecran) ; en hauteur,
+  a 4 rangees du haut ou du bas, elle glisse de 6 rangees ; en 1/6 s
+  environ (reglages SC_STEP, SC_EDGE, SC_VSTEP, SC_VEDGE, SC_NFR).
+  Sans l'option, en hauteur l'ecran se cale sur Rick (s'il
+  descend sous la barre du bas, il repasse en haut de l'ecran, et inversement).
+
+PLATEFORMES MOBILES ET BOUTONS (lignes a la fin de LEVEL1.MAP, apres la carte) :
+  P col rangee largeur dcol drangee vitesse mode
+     col / rangee : tuile de depart (rangee = Y affiche en bas ; ligne du
+     .MAP = L affiche en bas = rangee + 8) ; largeur en tuiles ; dcol / drangee : trajet en tuiles
+     (negatif = gauche / haut) ; vitesse 1-4 pixels par image ;
+     mode A = va-et-vient tout seul, B = son bouton le lance en va-et-vient
+     mode C = son bouton lui fait faire UN aller-retour (on peut le rappeler)
+     mode D = chaque appui sur UN de ses boutons l'envoie a l'autre bout, ou
+     elle s'arrete, que Rick soit dessus ou non (ex. 2 boutons : celui du
+     bas la fait monter, celui du haut la fait redescendre)
+     mode L = ASCENSEUR sur sa vis : debout dessus, UN appui sur haut / bas
+     l'envoie jusqu'au bout (vertical : en haut / en bas ; horizontal :
+     haut = vers B, bas = vers A), inutile de garder la touche ;
+     un appui dans l'autre sens le fait repartir en arriere ;
+     son bouton S l'appelle a l'autre bout.
+  P ... mode prolongement : nombre de tuiles en plus apres le mode (ex.
+     P 68 92 3 0 -8 2 A 8) : apres un coup sur son bouton S, son trajet va
+     de l'arrivee jusqu'a ce nombre de tuiles plus loin (ici : va-et-vient
+     L98 - L90, puis L90 - L82 apres le bouton) ; trajet normal quand Rick
+     perd une vie. Editeur : champ Prolongement (tuiles).
+  S col rangee n    bouton (sur le mur du fond) qui actionne la plateforme n
+                    (0 = 1re ligne P, 1 = 2e...)
+  Exemple :  P 40 246 3 0 -6 1 B    (monte de 6 tuiles)
+             S 37 246 0
+  L col rangee dx dy depart periode
+                    LASERS DE LA SOUCOUPE (pieges mortels) : un trait part de
+                    (col, rangee) et avance de dx / dy pixels par image
+                    (diagonale : dx = 1 ou -1, dy = 2) jusqu'a un bloc ;
+                    il repart <periode> images plus tard (1er : <depart>).
+                    dy = 0 : TIR HORIZONTAL depuis un mur (col = 1re case
+                    libre devant l'emetteur, dx = -3 vers la gauche, 3 a droite).
+     L col rangee dx dy depart periode mode tcol trangee : DECLENCHEUR, le
+                    laser ne commence a tirer (1er tir <depart> images plus
+                    tard) qu'une fois Rick arrive sur la case (tcol, trangee),
+                    comme X / Y affiches en bas ; mode = 0 (vise Rick),
+                    1 (tout droit) ou 2 (au passage). Si Rick meurt, il faut
+                    y revenir.
+  E col rangee      BONBONNE D'ENERGIE (2x2 tuiles) : recharge les lasers
+                    de Rick au maximum (6), puis disparait.
+  G col rangee      BONBONNE VERTE : 500 points (comme l'original), puis
+                    disparait. Le score s'affiche en haut (6 chiffres).
+  D col rangee      BONBONNE DE BOMBES (grise rayee de rouge) : recharge les
+                    bombes au maximum (6), puis disparait.
+  Z col rangee largeur hauteur [allume eteint]
+                    RAYON / ARC ELECTRIQUE : mortel tant qu'il n'est pas coupe ;
+                    avec 'allume eteint' (en images) il clignote.
+  Z col rangee largeur hauteur allume eteint type
+                    type 1 = barre de decor inoffensive ;
+                    type 2 = VA-ET-VIENT : un bout de rayon (3 tuiles) court
+                    d'un emetteur a l'autre (exemple : Z 72 135 16 1 0 0 2)
+  S col rangee 200+n  bouton qui coupe le rayon n (0 = 1re ligne Z ou E)
+  S col rangee 100+n  bouton qui coupe le laser n (0 = 1re ligne L)
+  S col rangee 300+n  bouton-PIEGE : fait tirer le laser n (0 = 1re ligne L)
+                    UN SEUL coup a chaque appui (on peut le refaire tirer) ;
+                    ce laser ne tire jamais tout seul
+  Exemple :  E 119 202  (bonbonne sur les tonneaux)
+  F col rangee      FIN DU NIVEAU : case haut-gauche de Rick (2 tuiles de
+                    haut), comme le depart ; quand Rick y arrive : WELL DONE !
+                    END OF THE LEVEL pendant 3 s, puis le niveau recommence
+                    (une seule ligne F ; editeur : objet Fin du niveau)
+  Apres une reapparition, Rick clignote : invulnerable 2 secondes.
+  MAPCONV.PY garde ces lignes quand il regenere la carte.
+  La barre du bas affiche SOL P quand Rick est sur une plateforme mobile.
+
+Menus et scores :
+  Apres la page d'accueil : MENU DES NIVEAUX (haut / bas ou 1-5, espace /
+  feu pour jouer, S = meilleurs scores, ESC = quitter). Un niveau est
+  propose s'il existe LEVEL\LEVELn.MAP (tuiles : TILES.DAT pour le niveau 1,
+  TILESn.DAT pour les autres) ; les autres sont en gris.
+  Score en haut de l'ecran (6 chiffres) : bonbonne verte = 500 points.
+  Fin de la partie (6 vies perdues) ou fin du niveau (ligne F) : si le score
+  entre dans les 10 meilleurs, on tape son nom (8 lettres ou chiffres,
+  retour arriere pour effacer, RETURN pour valider), puis la page des
+  meilleurs scores, puis le menu. Les scores sont gardes dans RICK3D.SAV
+  (avec la position sauvee par R, valable seulement dans son niveau).
+
+Commandes :
+  Manette (port 1) ou fleches : gauche/droite = marcher, haut = saut
+  Haut / bas pres d'une echelle : monter / descendre (gauche/droite : la quitter)
+  Feu + gauche / droite : coup de poing (actionne un bouton juste devant)
+  Bas (sans echelle) : s'accroupir ; gauche/droite accroupi = ramper
+  Bas + gauche/droite : s'accroupir et ramper tout de suite, meme en haut
+    d'une echelle (pour sortir d'une echelle sous une onde electrique)
+    (passages de 2 tuiles de haut : debout il en faut 3). Rick se releve
+    des qu'il a la place.
+  Feu + haut  : laser (6 tirs) : un tir a la fois, s'arrete sur les murs
+  Feu + bas   : bombe (6) : meche 1,5 s puis explosion ; mortelle de pres !
+  Feu + bas-gauche / bas-droite (diagonales) : LANCE la bombe, elle glisse
+    au sol jusqu'au mur ou a la plaque suivante (pour les passages ou l'on rampe)
+  Munitions rechargees quand Rick reapparait, affichees dans la barre.
+  Bouton enfonce : Rick reste immobile (comme dans Rick Dangerous)
+  Clavier : espace = feu, fleche bas = bas
+  M          musique suivante
+  P          pause / reprise de la musique
+  + / -      volume (pave numerique, ou touche = + / ) - )
+  H          cacher / afficher le texte
+  I          vies illimitees oui / non (pour tester ; VIES INF en bas a droite)
+  R          note la position de Rick (pour tester) et l'ecrit dans RICK3D.SAV
+  B          ramene Rick a la position notee avec R (meme apres avoir quitte)
+  G          glissement de la carte oui / non (au lieu d'ecrans fixes)
+  V          vue de dos (essai) : la camera suit Rick par derriere, on joue
+             normalement (commandes inchangees) ; V pour revenir de cote.
+             Plus saccade que la vue de cote (environ 20 a 30 images/s a
+             32 MHz) mais le jeu garde la meme vitesse.
+  D          calculs 3D par le DSP / par le 030 (pour comparer ; DSP au
+             depart). Sans DSP (ou s'il ne repond plus) : tout au 030.
+  ESC        quitter (mode video, palette et son restaures)
+
+
+CALCULS 3D PAR LE DSP (touche D) - comme CUBEDSP :
+  R3D.P56 est envoye au DSP avec le replay de Simplet (meme Dsp_ExecProg ;
+  sa boucle d'attente est redirigee vers R3D, ses fichiers ne changent pas).
+  Pour chaque boite qui a une face de cote a dessiner, le 030 envoie ses
+  6 coordonnees ; le DSP projette les 8 coins (exactement comme muls/divs
+  du 030), choisit les faces, calcule les aretes et renvoie pour chaque
+  face ses segments (debut, pente) ; le 030 ne fait plus que remplir les
+  lignes. On ne parle au DSP que quand la musique ne lui parle pas, et
+  chaque commande finit par une reponse du DSP (sinon : tout au 030).
+  Vue de dos, en plus : on n'efface que ce qui a ete dessine dans l'image
+  precedente (par bandes de 8 lignes) et les faces dessinees (motifs) vont
+  2 fois plus vite.
+  Mesure a 32 MHz, vue de dos : HYDE PARK 20 -> 30 images/s,
+  salle des boules 15 -> 20.
+Bruitages : synthetiseur YM2149 (saut, laser, meche, explosion, chute),
+  mixe avec la musique DSP (routage par XBIOS Soundcmd :
+  ADC = PSG, ADDERIN = ADC + matrice, gain ADC YM_GAIN dans le source).
+  Volume de la musique au depart : 20. Effets decrits dans les tables sfx_* du source
+  (voie, duree, periode + glissando, volume + decroissance, bruit blanc).
+
+Rick : visage (oeil, nez, bord du chapeau) du cote ou il regarde, sac a dos
+  derriere ; de dos sur les echelles ; bras et jambes animes. Les poses sont
+  des tables de boites (pose_stand, pose_crouch, pose_ladder) dans le source.
+
+HUD de Rick (en haut, toujours affiche) :
+  vies (chapeau), tirs laser, bombes, nom du niveau.
+  6 vies ; a 0 : retour au debut du niveau. Munitions rendues a chaque vie.
+
+FICHIER RICK3D.SAV (cree a cote du dossier LEVEL, 134 octets) :
+  'R3DS', version, niveau, position notee (x, pieds), puis 10 scores
+  (nom 8 lettres + score) prevus pour la table des records.
+  Effacer le fichier = oublier la position.
+
+POSITION SUR LA CARTE (2e ligne de la barre du bas) - pour corriger le .MAP :
+  X49 Y253     tuile sous le centre des pieds de Rick (colonne, rangee ;
+               la 1re colonne / rangee de la carte = 0)
+  .MAP L259 C50  la meme tuile dans le fichier LEVEL1.MAP, telle que
+               l'affiche un editeur de texte (Notepad++ : Ln 259, Col 50)
+  SOL g        caractere de la tuile juste sous les pieds
+  ECRAN 32,232 tuile du coin haut-gauche de l'ecran affiche
+  Exemple : Rick passe a travers un sol -> noter L et C, ouvrir le .MAP,
+  aller a la ligne L+1 (celle de SOL) colonne C et y mettre '#' ou '='.
+
+Barre de texte en bas (police systeme 6x6) :
+  ligne 1 : FPS, numero/nom de la musique, volume, PAUSE
+  ligne 2 : position sur la carte (voir ci-dessus)
+  H cache / affiche cette barre (pas le HUD).
+  Si la musique ne marche pas, le message d'erreur s'affiche a la place.
+
+Assembler :
+  Devpac 3 : ouvrir RICK3D.S (AMIGADSP.S et .P56 dans le meme dossier).
+  vasm (PC) : vasmm68k_mot -devpac -nocase -m68030 -Ftos -nosym -o RICK3D.PRG RICK3D.S
+
+Teste sous Hatari (Falcon 030 16 MHz + DSP, EmuTOS 1.4.0) en VGA et RGB :
+affichage plein ecran, 60 FPS, musique + enchainement, pause, musique
+suivante, texte cache/affiche, marche, saut, changement d'ecran, sortie.
+
+Editeur (OUTILS\EDITEUR.HTML, a ouvrir dans Edge ou Chrome) :
+  Carte : decor, objets, generation du decor depuis l'image originale.
+  Apparence des tuiles : motifs 10x10 des blocs et couleurs des objets ;
+  enregistrer LEVEL\TILES.DAT, le jeu le lit au demarrage (sinon tuiles d'origine).
+
+Sources (Devpac 3 : on assemble RICK3D.S, il inclut les autres) :
+  PARAMS.S    TOUS LES REGLAGES, avec leur description :
+              volume de la musique au demarrage (MUS_VOL_INIT), pas des
+              touches + / -, vies, munitions, saut, gravite, vitesse des
+              lasers, bombe, invulnerabilite, profondeur 3D...
+  INIT.S      demarrage, boucle principale, sortie
+  CLAVIER.S   clavier / manette          ECRAN.S     double buffer
+  HUD.S       bande du haut              TEXTE.S     barre du bas
+  NIVEAU.S    lecture du .MAP et de TILES.DAT, tuiles, collisions
+  RICK.S      deplacements de Rick       DESSRICK.S  dessin de Rick
+  RENDU3D.S   boites 3D, polygones       DECOR.S     decor d'un ecran
+  PLATEF.S    plateformes, ascenseurs, boutons
+  PIEGES.S    lasers-pieges, rayons, bonbonnes
+  ARMES.S     laser et bombe             SONS.S      bruitages YM
+  ACCUEIL.S   page d'accueil             MENUS.S     menu des niveaux, scores, nom
+  MUSIQUE.S   replay DSP                 DONNEES.S   couleurs, sons, textes
+  DSP3D.S     calculs 3D par le DSP (programme R3D, source OUTILS\R3D.A56)
+  VARIABLE.S  variables                  AMIGADSP.S  replay de Simplet (inchange)

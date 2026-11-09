@@ -1,0 +1,760 @@
+; R3D.A56 - RICK3D 3D maths by the DSP (projection + edges of the boxes)
+;   same principle as CUBE3D.A56 (CUBEDSP) : loaded WITH Simplet's
+;   replay (same Dsp_ExecProg, his blocks first) ; his waiting loop
+;   'jmp p:$66' is redirected to our code (relay at $144). The 030
+;   talks to this program only when the music is not talking
+;   (MGTK_Replay_In_Service = 0, interrupts masked) and each command
+;   ends with an answer from the DSP. Free registers except r6/r7, m0-m7.
+;
+;   Memory (Falcon : X $0000-$3FFF = P $4000-$7FFF, Y = P $0000-$3FFF)
+;     Simplet : P $0000-$0143, X/Y $0000-$0FFF, X/Y $3000-$37FF
+;     here    : P $2000-...    , X $1000-$1FFF
+;
+;   Commands (24-bit word : command << 16 | parameter)
+;     4 PING                   -> $5A5A5A
+;     6 BOX  flags             (bits 0-3 allowed faces 1 l 2 r 4 t 8 b,
+;                               bit 4 : front face)
+;            X0 Y0 X1 Y1 Z0 Z1 CLIPY0 CLIPY1
+;        -> per side face drawn (order left right top bottom) :
+;             $800000 | col<<18 | ymin<<9 | n   (n lines)
+;             then left chain and right chain : segments
+;             (lines, integer x, 16-bit x fraction, integer slope,
+;             16-bit slope fraction) and 0 at the end of each chain
+;           front face : $C00000, X0 Y0 X1 Y1 projected (not clipped)
+;           end : $400000 | b0 ; if b0 : bx0<<12|bx1 , by0<<12|by1
+;     projection : xe = 160 + trunc(X*320/Z), ye = 120 + trunc(Y*320/Z)
+;       (exactly like the muls/divs of the 030)
+
+HSR     equ     $ffe9
+HTX     equ     $ffeb
+
+XA      equ     $1000           ; chain A : x per line (y = 0..255)
+XB      equ     $1100           ; chain B
+VBUF    equ     $1200           ; 4 vertices x,y (+ the 1st one copied)
+PAR     equ     $1210           ; BOX parameters
+PX0     equ     PAR+0
+PY0     equ     PAR+1
+PX1     equ     PAR+2
+PY1     equ     PAR+3
+PZ0     equ     PAR+4
+PZ1     equ     PAR+5
+CY0     equ     PAR+6
+CY1     equ     PAR+7
+FLG     equ     PAR+8
+PRJ     equ     $1220           ; projected : x(X0,Z0) x(X0,Z1) x(X1,Z0) x(X1,Z1)
+QX00    equ     PRJ+0           ;            y(Y0,Z0) y(Y0,Z1) y(Y1,Z0) y(Y1,Z1)
+QX01    equ     PRJ+1
+QX10    equ     PRJ+2
+QX11    equ     PRJ+3
+QY00    equ     PRJ+4
+QY01    equ     PRJ+5
+QY10    equ     PRJ+6
+QY11    equ     PRJ+7
+FC      equ     $1230           ; colour of the face (1 side 2 top 3 bottom)
+YMN     equ     $1231           ; lines of the face (clipped)
+YMX     equ     $1232
+FXN     equ     $1233           ; min / max x of the vertices
+FXX     equ     $1234
+BX0     equ     $1235           ; bounding box of the whole object
+BX1     equ     $1236
+BY0     equ     $1237
+BY1     equ     $1238
+ANY     equ     $1239
+TMP     equ     $123A
+EXA     equ     $123B           ; edge
+EYA     equ     $123C
+EYB     equ     $123D
+EDX     equ     $123E
+ERC     equ     $123F
+EYS     equ     $1240
+ENL     equ     $1241
+YRAW    equ     $1242           ; unclipped ymin
+YRAX    equ     $1243
+FT      equ     $1244           ; top vertex
+EI      equ     $1245
+STP     equ     $1246
+WND     equ     $1247
+ESH     equ     $1248           ; slope of the edge (24.24)
+ESL     equ     $1249
+CNTA    equ     $124A
+CNTB    equ     $124B
+XN      equ     $1250           ; side face : near / far x
+XF      equ     $1251
+YN0     equ     $1252           ;   top / bottom y (near, far)
+YN1     equ     $1253
+YF0     equ     $1254
+YF1     equ     $1255
+YA      equ     $1256           ; top / bottom : y (Z0) and y (Z1)
+YB      equ     $1257
+ET      equ     $1258           ;   top / bottom
+EB      equ     $1259
+XLT     equ     $125A           ;   left / right x at the top and at the bottom
+XRT     equ     $125B
+XLB     equ     $125C
+XRB     equ     $125D
+RTAB    equ     $1800           ; 2^23/d rounded up, d = 0..2047
+
+        org     p:$0066
+        dc      $0c0144                 ; jmp <$144  (instead of jmp <$66)
+        org     p:$0144
+        jmp     init
+
+        org     p:$2000
+init
+        andi    #$fc,mr                 ; interrupts (SSI of the music)
+        ; --- table of inverses : RTAB[d] = ceil(2^23 / d)
+        move    #RTAB,r0
+        move    #>$7fffff,x0
+        nop
+        move    x0,x:(r0)+              ; d = 0
+        move    x0,x:(r0)+              ; d = 1
+        move    #>2,b
+        do      #2046,rc_end
+        move    b1,x0
+        jsr     rcpdiv
+        move    a1,x:(r0)+
+        move    #>1,x0
+        add     x0,b
+        nop
+rc_end
+main
+        jclr    #0,x:HSR,main
+        movep   x:HTX,a                 ; command
+        move    a1,b
+        move    #>$00ffff,x1
+        and     x1,b                    ; b1 = parameter
+        rep     #16
+        lsr     a                       ; a1 = command
+        move    #>6,x0
+        cmp     x0,a
+        jeq     c_box
+        move    #>4,x0
+        cmp     x0,a
+        jeq     c_ping
+        move    #>7,x0
+        cmp     x0,a
+        jeq     c_peek
+        jmp     main
+
+; PEEK adr -> x:adr
+c_peek
+        move    b1,r0
+        nop
+        move    x:(r0),a
+        jsr     wr_a
+        jmp     main
+
+rd_a    jclr    #0,x:HSR,rd_a
+        movep   x:HTX,a
+        rts
+wr_a    jclr    #1,x:HSR,wr_a
+        movep   a1,x:HTX
+        rts
+
+c_ping
+        move    #>$5a5a5a,a
+        jsr     wr_a
+        jmp     main
+
+; rcpdiv : x0 = d (>= 2) -> a1 = ceil(2^23 / d) = floor((2^23-1)/d) + 1
+rcpdiv
+        clr     a
+        move    #>$7fffff,a0
+        asl     a
+        andi    #$fe,ccr
+        rep     #24
+        div     x0,a
+        move    a0,a
+        move    #>1,x0
+        add     x0,a
+        rts
+
+; rcp : a1 = d (> 0) -> x1 = 1/d (x 2^23, rounded up)
+rcp
+        move    #>2047,x0
+        cmp     x0,a
+        jgt     rp_div
+        move    #RTAB,r3
+        move    a1,n3
+        nop
+        move    x:(r3+n3),x1
+        rts
+rp_div  move    a1,x0
+        jsr     rcpdiv
+        move    a1,x1
+        rts
+
+; proj : a1 = v, x1 = 1/z, y1 = z -> a1 = trunc(v * 320 / z)
+proj
+        tst     a
+        jlt     pj_neg
+        jsr     pjpos
+        rts
+pj_neg  neg     a
+        jsr     pjpos
+        neg     a
+        rts
+pjpos   move    a1,x0                   ; v >= 0
+        move    #>160,y0
+        mpy     x0,y0,a                 ; a0 = N = 320 v
+        move    a0,x0
+        mpy     x0,x1,a                 ; a1 = floor(N / z) or + 1
+        move    a1,y0
+        mpy     y0,y1,b                 ; 2 q z
+        asr     b                       ; q z (integer, b0)
+        clr     a
+        move    x0,a0                   ; N (integer, a0)
+        cmp     a,b
+        tfr     y0,a                    ; (tfr : CCR unchanged)
+        jle     pj_ok                   ; q z <= N : q is right
+        move    #>1,x0
+        sub     x0,a
+pj_ok   rts
+
+
+;--------------------------------------------------------------------
+; BOX
+c_box
+        move    b1,x:FLG
+        move    #PAR,r0
+        nop
+        do      #8,bx_rd
+bx_w    jclr    #0,x:HSR,bx_w
+        movep   x:HTX,x:(r0)+
+        nop
+bx_rd
+        ; empty bounding box
+        move    #>4095,x0
+        move    x0,x:BX0
+        move    x0,x:BY0
+        move    #>-1,x0
+        move    x0,x:BX1
+        move    x0,x:BY1
+        clr     a
+        move    a1,x:ANY
+        ; --- projection of the 8 corners (2 depths only)
+        move    x:PZ0,a
+        jsr     rcp
+        move    x:PZ0,y1
+        move    x:PX0,a
+        jsr     proj
+        move    #>160,x0
+        add     x0,a
+        move    a1,x:QX00
+        move    x:PX1,a
+        jsr     proj
+        move    #>160,x0
+        add     x0,a
+        move    a1,x:QX10
+        move    x:PY0,a
+        jsr     proj
+        move    #>120,x0
+        add     x0,a
+        move    a1,x:QY00
+        move    x:PY1,a
+        jsr     proj
+        move    #>120,x0
+        add     x0,a
+        move    a1,x:QY10
+        move    x:PZ1,a
+        jsr     rcp
+        move    x:PZ1,y1
+        move    x:PX0,a
+        jsr     proj
+        move    #>160,x0
+        add     x0,a
+        move    a1,x:QX01
+        move    x:PX1,a
+        jsr     proj
+        move    #>160,x0
+        add     x0,a
+        move    a1,x:QX11
+        move    x:PY0,a
+        jsr     proj
+        move    #>120,x0
+        add     x0,a
+        move    a1,x:QY01
+        move    x:PY1,a
+        jsr     proj
+        move    #>120,x0
+        add     x0,a
+        move    a1,x:QY11
+        move    #>1,x0                  ; (colour of the sides)
+        move    x0,x:FC
+        ; --- left face : bit 0 and X0 > 0
+        move    x:FLG,a
+        move    #>1,x0
+        and     x0,a
+        jeq     no_l
+        move    x:PX0,a
+        tst     a
+        jle     no_l
+        move    x:QX00,x0
+        move    x0,x:XN
+        move    x:QX01,x0
+        move    x0,x:XF
+        jsr     side
+no_l
+        ; --- right face : bit 1 and X1 < 0
+        move    x:FLG,a
+        move    #>2,x0
+        and     x0,a
+        jeq     no_r
+        move    x:PX1,a
+        tst     a
+        jge     no_r
+        move    x:QX10,x0
+        move    x0,x:XN
+        move    x:QX11,x0
+        move    x0,x:XF
+        jsr     side
+no_r
+        ; --- top : bit 2 and Y0 > 0
+        move    x:FLG,a
+        move    #>4,x0
+        and     x0,a
+        jeq     no_t
+        move    x:PY0,a
+        tst     a
+        jle     no_t
+        move    #>2,x0
+        move    x0,x:FC
+        move    x:QY00,x0
+        move    x0,x:YA
+        move    x:QY01,x0
+        move    x0,x:YB
+        jsr     flat
+no_t
+        ; --- bottom : bit 3 and Y1 < 0
+        move    x:FLG,a
+        move    #>8,x0
+        and     x0,a
+        jeq     no_b
+        move    x:PY1,a
+        tst     a
+        jge     no_b
+        move    #>3,x0
+        move    x0,x:FC
+        move    x:QY10,x0
+        move    x0,x:YA
+        move    x:QY11,x0
+        move    x0,x:YB
+        jsr     flat
+no_b
+        ; --- front face : projected coordinates (the 030 fills it)
+        move    x:FLG,a
+        move    #>16,x0
+        and     x0,a
+        jeq     no_f
+        move    #>$c00000,a
+        jsr     wr_a
+        move    x:QX00,a
+        jsr     wr_a
+        move    x:QY00,a
+        jsr     wr_a
+        move    x:QX10,a
+        jsr     wr_a
+        move    x:QY10,a
+        jsr     wr_a
+no_f
+        ; --- end (+ bounding box of the side faces)
+        move    x:ANY,a
+        move    #>$400000,x0
+        add     x0,a
+        jsr     wr_a
+        move    x:ANY,a
+        tst     a
+        jeq     main
+        move    x:BX0,x0
+        move    x:BX1,x1
+        jsr     pack12
+        jsr     wr_a
+        move    x:BY0,x0
+        move    x:BY1,x1
+        jsr     pack12
+        jsr     wr_a
+        jmp     main
+
+; pack12 : a1 = x0 << 12 | x1
+pack12
+        move    #>2048,y0
+        mpy     x0,y0,a
+        move    a0,a
+        add     x1,a
+        rts
+
+; wr0 : sends 0 (end of a chain)
+wr0     clr     a
+w0_w    jclr    #1,x:HSR,w0_w
+        movep   a1,x:HTX
+        rts
+
+;--------------------------------------------------------------------
+; clip : a = top y, b = bottom y (of the face) -> YRAW YRAX YMN YMX ;
+;        N = 1 (jlt) if no line is on the screen
+clip
+        move    a1,x:YRAW
+        move    b1,x:YRAX
+        move    x:CY0,x0
+        cmp     x0,a
+        tlt     x0,a
+        move    x:CY1,x0
+        cmp     x0,b
+        tgt     x0,b
+        move    a1,x:YMN
+        move    b1,x:YMX
+        cmp     a,b                     ; (ymax - ymin)
+        rts
+
+; fhead : bounding box + header $800000|FC<<18|ymin<<9|n
+fhead
+        move    #>1,x0
+        move    x0,x:ANY
+        move    x:FXN,a
+        tst     a
+        jge     fo1
+        clr     a
+fo1     move    x:BX0,x0
+        cmp     x0,a
+        tgt     x0,a
+        move    a1,x:BX0
+        move    x:FXX,a
+        move    #>319,x0
+        cmp     x0,a
+        tgt     x0,a
+        move    x:BX1,x0
+        cmp     x0,a
+        tlt     x0,a
+        move    a1,x:BX1
+        move    x:YMN,a
+        move    x:BY0,x0
+        cmp     x0,a
+        tgt     x0,a
+        move    a1,x:BY0
+        move    x:YMX,a
+        move    x:BY1,x0
+        cmp     x0,a
+        tlt     x0,a
+        move    a1,x:BY1
+        move    x:YMX,a
+        move    x:YMN,x0
+        sub     x0,a
+        move    #>1,x1
+        add     x1,a
+        move    a1,x1                   ; n lines
+        move    x:FC,a
+        rep     #9
+        asl     a
+        add     x0,a                    ; (x0 = ymin)
+        rep     #9
+        asl     a
+        add     x1,a
+        move    #>$800000,x1
+        add     x1,a
+        jsr     wr_a
+        rts
+
+;--------------------------------------------------------------------
+; side : left or right face : 2 vertical edges (x = XN near,
+;   x = XF far) joined by 2 slanted edges
+side
+        move    x:QY00,x0
+        move    x0,x:YN0
+        move    x:QY10,x0
+        move    x0,x:YN1
+        move    x:QY01,x0
+        move    x0,x:YF0
+        move    x:QY11,x0
+        move    x0,x:YF1
+        ; x : seen edge-on, or off the screen -> nothing
+        move    x:XN,a
+        move    x:XF,x0
+        cmp     x0,a
+        jeq     sd_ret
+        tfr     a,b
+        tgt     x0,a                    ; a = min
+        cmp     x0,b
+        tlt     x0,b                    ; b = max
+        move    a1,x:FXN
+        move    b1,x:FXX
+        tst     b
+        jlt     sd_ret
+        move    #>319,x0
+        cmp     x0,a
+        jgt     sd_ret
+        ; y : top = min(YN0, YF0), bottom = max(YN1, YF1)
+        move    x:YN0,a
+        move    x:YF0,x0
+        cmp     x0,a
+        tgt     x0,a
+        move    x:YN1,b
+        move    x:YF1,x0
+        cmp     x0,b
+        tlt     x0,b
+        jsr     clip
+        jlt     sd_ret
+        jsr     fhead
+        ; left chain : the far side if XF < XN
+        move    x:XF,a
+        move    x:XN,x0
+        cmp     x0,a
+        jgt     sd_r
+        jsr     cfar
+        jsr     cnear
+        rts
+sd_r    jsr     cnear
+        jsr     cfar
+sd_ret  rts
+
+; cnear : chain of the near side (x = XN)
+cnear
+        move    x:YF0,a                 ; slanted top if YF0 < YN0
+        move    x:YN0,x0
+        cmp     x0,a
+        jge     cn1
+        move    x:XN,a
+        move    x:XF,x0
+        sub     x0,a                    ; dx (x0 = XF : x of the top)
+        move    x:YN0,b
+        move    x:YF0,x1                ; (x1 = y of the top)
+        sub     x1,b                    ; dy
+        jsr     slant
+        move    x:YN0,b
+        jsr     emit
+cn1     move    x:XN,x0                 ; near vertical
+        move    x:YN0,x1
+        jsr     vert
+        move    x:YN1,b
+        jsr     emit
+        move    x:YF1,a                 ; slanted bottom if YF1 > YN1
+        move    x:YN1,x0
+        cmp     x0,a
+        jle     cn2
+        move    x:XF,a
+        move    x:XN,x0
+        sub     x0,a
+        move    x:YF1,b
+        move    x:YN1,x1
+        sub     x1,b
+        jsr     slant
+        move    x:YF1,b
+        jsr     emit
+cn2     jsr     wr0
+        rts
+
+; cfar : chain of the far side (x = XF)
+cfar
+        move    x:YN0,a                 ; slanted top if YN0 < YF0
+        move    x:YF0,x0
+        cmp     x0,a
+        jge     cf1
+        move    x:XF,a
+        move    x:XN,x0
+        sub     x0,a
+        move    x:YF0,b
+        move    x:YN0,x1
+        sub     x1,b
+        jsr     slant
+        move    x:YF0,b
+        jsr     emit
+cf1     move    x:XF,x0                 ; far vertical
+        move    x:YF0,x1
+        jsr     vert
+        move    x:YF1,b
+        jsr     emit
+        move    x:YN1,a                 ; slanted bottom if YN1 > YF1
+        move    x:YF1,x0
+        cmp     x0,a
+        jle     cf2
+        move    x:XN,a
+        move    x:XF,x0
+        sub     x0,a
+        move    x:YN1,b
+        move    x:YF1,x1
+        sub     x1,b
+        jsr     slant
+        move    x:YN1,b
+        jsr     emit
+cf2     jsr     wr0
+        rts
+
+;--------------------------------------------------------------------
+; flat : top or bottom : a trapezoid (horizontal top and bottom edges)
+;   row Z0 : y = YA, x from QX00 to QX10 ; row Z1 : y = YB, QX01..QX11
+flat
+        move    x:YA,a
+        move    x:YB,x0
+        cmp     x0,a
+        jeq     fl_ret                  ; seen edge-on
+        move    x:QX00,a                ; min / max x
+        move    x:QX01,x0
+        cmp     x0,a
+        tgt     x0,a
+        move    a1,x:FXN
+        move    x:QX10,b
+        move    x:QX11,x0
+        cmp     x0,b
+        tlt     x0,b
+        move    b1,x:FXX
+        tst     b
+        jlt     fl_ret
+        move    #>319,x0
+        cmp     x0,a
+        jgt     fl_ret
+        move    x:YA,a
+        move    x:YB,x0
+        cmp     x0,a
+        jgt     fl_b
+        move    a1,x:ET                 ; top = row Z0
+        move    x0,x:EB
+        move    x:QX00,x0
+        move    x0,x:XLT
+        move    x:QX10,x0
+        move    x0,x:XRT
+        move    x:QX01,x0
+        move    x0,x:XLB
+        move    x:QX11,x0
+        move    x0,x:XRB
+        jmp     fl_c
+fl_b    move    x0,x:ET                 ; top = row Z1
+        move    a1,x:EB
+        move    x:QX01,x0
+        move    x0,x:XLT
+        move    x:QX11,x0
+        move    x0,x:XRT
+        move    x:QX00,x0
+        move    x0,x:XLB
+        move    x:QX10,x0
+        move    x0,x:XRB
+fl_c    move    x:ET,a
+        move    x:EB,b
+        jsr     clip
+        jlt     fl_ret
+        jsr     fhead
+        move    x:EB,a                  ; 1 / dy (shared by the 2 edges)
+        move    x:ET,x0
+        sub     x0,a
+        jsr     rcp
+        move    x1,x:ERC
+        move    x:ET,x0
+        move    x0,x:EYA
+        ; left
+        move    x:XLB,a
+        move    x:XLT,x0
+        move    x0,x:EXA
+        sub     x0,a
+        move    a1,x:EDX
+        move    a1,x0
+        mpy     x0,x1,a
+        move    a1,y1
+        move    a0,y0
+        move    x:EB,b
+        jsr     emit
+        jsr     wr0
+        ; right
+        move    x:XRB,a
+        move    x:XRT,x0
+        move    x0,x:EXA
+        sub     x0,a
+        move    a1,x:EDX
+        move    a1,x0
+        move    x:ERC,x1
+        mpy     x0,x1,a
+        move    a1,y1
+        move    a0,y0
+        move    x:EB,b
+        jsr     emit
+        jsr     wr0
+fl_ret  rts
+
+;--------------------------------------------------------------------
+; slant : slanted edge : x0 = x of the top, x1 = y of the top, a = dx,
+;         b = dy (> 0) -> EXA EYA EDX ERC, y = slope (24.24)
+slant
+        move    x0,x:EXA
+        move    x1,x:EYA
+        move    a1,x:EDX
+        tfr     b,a
+        jsr     rcp                     ; x1 = 1/dy
+        move    x1,x:ERC
+        move    x:EDX,x0
+        mpy     x0,x1,a
+        move    a1,y1
+        move    a0,y0
+        rts
+
+; vert : vertical edge : x0 = x, x1 = y of the top
+vert
+        move    x0,x:EXA
+        move    x1,x:EYA
+        clr     a
+        move    a1,x:EDX
+        move    a1,y1
+        move    a1,y0
+        rts
+
+; emit : segment from EYA to b (excluded ; + the last line if b = bottom of
+;   the face), clipped -> to the 030 : lines, x 16.16 (2 words), slope (2 words)
+emit
+        move    x:YRAX,x0
+        cmp     x0,b
+        jne     em1
+        move    #>1,x0
+        add     x0,b
+em1     move    x:YMX,a
+        move    #>1,x0
+        add     x0,a
+        cmp     a,b
+        tgt     a,b                     ; end
+        move    x:EYA,x0
+        move    x:YMN,a
+        cmp     x0,a
+        tlt     x0,a                    ; start
+        sub     a,b
+        jle     em_ret                  ; no line
+em_w1   jclr    #1,x:HSR,em_w1
+        movep   b1,x:HTX                ; lines
+        sub     x0,a                    ; k = start - top
+        jeq     em_k0
+        move    x:EDX,b
+        abs     b
+        move    #>2047,x1
+        cmp     x1,b
+        jgt     em_sl
+        move    #>4095,x1
+        cmp     x1,a
+        jgt     em_sl
+        move    a1,x0
+        move    x:EDX,x1
+        mpy     x0,x1,a                 ; 2 k dx
+        asr     a                       ; k dx (a0)
+        move    a0,x0
+        move    x:ERC,x1
+        mpy     x0,x1,a                 ; k dx / dy (24.24)
+        jmp     em_st
+em_sl   move    a1,x0                   ; (rare : line by line)
+        clr     a
+        rep     x0
+        add     y,a
+        jmp     em_st
+em_k0   clr     a
+em_st   move    x:EXA,x0
+        add     x0,a                    ; + x of the top
+        move    #0,x1
+        move    #>$800000,x0
+        add     x,a                     ; + 0.5
+em_w2   jclr    #1,x:HSR,em_w2
+        movep   a1,x:HTX                ; integer x
+        move    a0,b
+        rep     #8
+        lsr     b
+em_w3   jclr    #1,x:HSR,em_w3
+        movep   b1,x:HTX                ; x : 16 fraction bits
+em_w4   jclr    #1,x:HSR,em_w4
+        movep   y1,x:HTX                ; integer slope
+        move    y0,b
+        rep     #8
+        lsr     b
+em_w5   jclr    #1,x:HSR,em_w5
+        movep   b1,x:HTX                ; slope : 16 fraction bits
+em_ret  rts

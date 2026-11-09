@@ -1,0 +1,8 @@
+ZIK - musiques du jeu
+=====================
+Ce dossier est vide dans le depot (les modules appartiennent a leurs auteurs).
+
+Posez ici des modules Amiga/ProTracker (.MOD, 4/6/8 voies) :
+au demarrage, RICK3D recherche ZIK\*.MOD, les trie et les joue
+dans le jeu via le replay DSP de Simplet (AMIGADSP).
+Sans module, le jeu affiche "NO .MOD FILE IN ZIK\" et tourne sans musique.

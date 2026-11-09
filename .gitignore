@@ -1,0 +1,8 @@
+*.mp4
+*.exe
+RICK3D.SAV
+.claude/
+level original/
+hatari_validation/
+ZIK/*
+!ZIK/LISEZMOI.TXT
