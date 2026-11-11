@@ -419,7 +419,7 @@ const TILES=[
  ['u','Tuyau gris (décor)'],['U','Tuyau à grimper'],['w','Tuyau où l\'on marche'],['N','Hublot (peindre un rectangle)']];
 const OBJS=[
  ['P','Ascenseur / plateforme'],['S','Bouton'],['L','Laser'],['Z','Rayon / arc'],
- ['W','Onde entre 2 boules'],['E','Bonbonne bleue (lasers)'],['G','Bonbonne verte (500 points)'],['D','Bonbonne bombes'],['R','Départ de Rick'],['F','Fin du niveau (Rick)']];
+ ['W','Onde entre 2 boules'],['E','Bonbonne bleue (lasers)'],['G','Bonbonne verte (500 points)'],['D','Bonbonne bombes'],['R','Départ de Rick'],['F','Fin du niveau (Rick)'],['N','Ennemi (garde robot)']];
 
 // ---------------------------------------------------------------- dessin des tuiles (8x8)
 const PAL={};
@@ -473,6 +473,7 @@ function parseMap(txt){
     else if(k==='Z'){o.w=n[2];o.h=n[3];o.on=n[4]||0;o.off=n[5]||0;o.deco=n[6]||0}
     else if(k==='W'){o.c2=n[2];o.sp=n[3]||1;o.ww=n[4]||4}
     else if('EGDF'.includes(k)){}
+    else if(k==='N'){o.ty=n[0]||1;o.c=n[1];o.r=n[2];o.dir=n[3]===1?1:0;o.mn=n[4]||0;o.mx=n[5]||0}   // N type col ligne [0 droite | 1 gauche]
     else {foot.push({k:';',txt:'; '+l});continue}
     foot.push(o);
   }
@@ -504,6 +505,7 @@ function writeMap(){
     case 'L': out.push(`L ${o.c} ${o.r} ${o.dx} ${o.dy} ${o.d0} ${o.per}`+(o.tc?` ${o.str||0} ${o.tc} ${o.tr}`:(o.str?' '+o.str:''))); break;
     case 'Z': out.push(`Z ${o.c} ${o.r} ${o.w} ${o.h}`+(+o.deco?` ${o.on||0} ${o.off||0} ${+o.deco}`:o.on?` ${o.on} ${o.off}`:'')); break;
     case 'W': out.push(`W ${o.c} ${o.r} ${o.c2} ${o.sp} ${o.ww}`); break;
+    case 'N': out.push(`N ${o.ty} ${o.c} ${o.r} ${o.dir?1:0}`+(o.mx?` ${o.mn} ${o.mx}`:'')); break;
     default: out.push(`${o.k} ${o.c} ${o.r}`);
     }
   }
@@ -652,6 +654,14 @@ function drawObjs(){
       ctx.fillStyle='#e0b030';ctx.fillRect(x+3,y+7,6,6);ctx.fillStyle='#806010';ctx.fillRect(x+3,y+13,2,3);ctx.fillRect(x+7,y+13,2,3);
       ctx.globalAlpha=1;ctx.strokeStyle='#ffd040';ctx.lineWidth=.8;ctx.strokeRect(x,y,12,16);txt('fin',x+1,y-1,'#ffd040');break;
     case 'E': canister(x,y,'#2f4fd8');break;
+    case 'N':{const m=o.dir?-1:1,X=a=>o.dir?x+12-a:x+a,R=(c,a,b,w,h)=>{ctx.fillStyle=c;ctx.fillRect(o.dir?x+12-a-w:x+a,y+b,w,h)};
+      if(o.ty==2){R('#d06c28',5,2,2,2);R('#d06c28',2,5,8,3);R('#c03030',1,8,10,2);R('#f0d8a8',0,10,12,1);R('#d06c28',0,11,12,3);R('#3ec83c',9,6,3,3);R('#6a3010',4,14,4,2);
+        if(o.mx){ctx.setLineDash([2,2]);ctx.strokeStyle='#ff9040';ctx.strokeRect(o.mn*8,y+15,(o.mx-o.mn)*8+12,1);ctx.setLineDash([])}
+        ctx.strokeStyle='#ff9040';ctx.lineWidth=.8;ctx.strokeRect(x,y,12,16);arrow(X(6),y-3,X(6)+m*8,y-3,'#ff9040');txt('ennemi 2',x-2,y-5,'#ff9040');break}
+      R('#d06c28',2,0,8,5);R('#9494ac',1,4,10,2);R('#3ec83c',8,1,3,3);R('#d06c28',2,6,8,6);R('#9494ac',1,9,10,1);
+      R('#6a3010',3,12,3,4);R('#6a3010',6,12,3,4);R('#b05a20',4,7,3,4);
+      ctx.strokeStyle='#ff9040';ctx.lineWidth=.8;ctx.strokeRect(x,y,12,16);
+      arrow(X(6),y-3,X(6)+m*8,y-3,'#ff9040');txt('ennemi '+o.ty,x-2,y-5,'#ff9040');break;}
     case 'G': canister(x,y,'#1fa040');break;
     case 'D': canister(x,y,'#9a9aa6',true);break;
     }
@@ -669,7 +679,7 @@ function objBox(o){
   const x=o.c*8,y=o.r*8;
   switch(o.k){case 'P':return [x,y,o.w*8,4];case 'Z':return [x,y,o.w*8,o.h*8];
   case 'W':return [x,y,(o.c2-o.c+2)*8,16];
-  case 'E':case 'G':case 'D':return [x,y,16,16];case 'F':return [x,y,12,16];default:return [x,y,8,8]}
+  case 'E':case 'G':case 'D':return [x,y,16,16];case 'F':case 'N':return [x,y,12,16];default:return [x,y,8,8]}
 }
 // ---------------------------------------------------------------- annuler / refaire
 let undo=[],redo=[];
@@ -698,7 +708,7 @@ function buildUI(){
   for(const [k,name] of OBJS){
     const d=document.createElement('div');d.className='tile';d.dataset.o=k;
     const c=document.createElement('canvas');c.width=16;c.height=16;const x=c.getContext('2d');
-    const col={W:'#8cf',P:'#50e6c8',S:'#f22',L:'#6cf',Z:'#5aa0ff',E:'#2f4fd8',G:'#1fa040',D:'#c03030',R:'#e8a070',F:'#ffd040'}[k];
+    const col={W:'#8cf',P:'#50e6c8',S:'#f22',L:'#6cf',Z:'#5aa0ff',E:'#2f4fd8',G:'#1fa040',D:'#c03030',R:'#e8a070',F:'#ffd040',N:'#d06c28'}[k];
     x.fillStyle=col;x.fillRect(3,3,10,10);d.appendChild(c);d.append(name);
     d.onclick=()=>{setTool('obj'+k)};O.appendChild(d);
   }
@@ -735,10 +745,12 @@ function newObj(k,c,r){
   case 'L':return {k,c,r,dx:0,dy:2,d0:60,per:200};
   case 'Z':return {k,c,r,w:4,h:1,on:90,off:90};
   case 'W':return {k,c,r,c2:c+12,sp:1,ww:4};
+  case 'N':return {k,c,r,ty:1,dir:0};
   default:return {k,c,r};
   }
 }
-const sectionComment={W:'; --- W boule_gauche ligne boule_droite [vitesse] [largeur] : onde electrique',P:'; --- ascenseurs / plateformes',S:'; --- boutons',L:'; --- lasers',Z:'; --- rayons / arcs',E:'; --- bonbonnes',G:'; --- bonbonnes',D:'; --- bonbonnes',F:'; --- F col ligne : fin du niveau (coin haut-gauche de Rick, comme le depart)'};
+const sectionComment={W:'; --- W boule_gauche ligne boule_droite [vitesse] [largeur] : onde electrique',P:'; --- ascenseurs / plateformes',S:'; --- boutons',L:'; --- lasers',Z:'; --- rayons / arcs',E:'; --- bonbonnes',G:'; --- bonbonnes',D:'; --- bonbonnes',F:'; --- F col ligne : fin du niveau (coin haut-gauche de Rick, comme le depart)',
+  N:'; --- N type col ligne [sens] [cmin cmax] : ennemi (1 = garde robot, 2 = droide cloche) ; coin haut-gauche, 2 tuiles de haut comme Rick ; sens 0 = droite, 1 = gauche ; cmin cmax = bornes de patrouille (type 2)'};
 function insertObj(o){
   // apres le dernier objet du meme type (garde les numeros des autres stables)
   let at=-1;for(let i=0;i<foot.length;i++) if(foot[i].k===o.k) at=i;
@@ -894,11 +906,18 @@ function showProps(){
   case 'E':h=`<b>Bonbonne bleue</b> (recharge les lasers)${pos}`;break;
   case 'G':h=`<b>Bonbonne verte</b> (500 points)${pos}`;break;
   case 'D':h=`<b>Bonbonne de bombes</b>${pos}`;break;
+  case 'N':h=`<b>Ennemi</b>${pos}<div class="row"><span style="width:110px">Type</span><select data-k="ety"><option value="1">1 : garde robot (Londres)</option><option value="2">2 : droïde cloche (patrouille)</option></select></div>
+    <div class="row"><span style="width:110px">Regarde vers</span><select data-k="edir"><option value="0">la droite</option><option value="1">la gauche</option></select></div>
+`+(o.ty==2?field('Patrouille : C min','emn',{emn:o.mn?o.mn+1:0},'0 = pas de borne')+field('Patrouille : C max','emx',{emx:o.mx?o.mx+1:0},'colonne du coin gauche (comme C en haut)')+`<div class="help">Droïde cloche : va-et-vient entre ses bornes (et murs / bords), ne tombe pas, ne prend pas les échelles. Le toucher tue Rick ; laser ou bombe le tuent (+100).</div>`:'')+`
+    <div class="help">(coin haut-gauche, 2 tuiles de haut comme le départ de Rick ; il tombe sur le sol en dessous)<br>
+    Garde robot : patrouille d'un mur / d'un bord à l'autre ; quand Rick est à moins de 20 tuiles, il va vers lui, et prend les échelles s'il est à un autre étage (jusqu'à 20 tuiles plus haut ou plus bas).
+    Le toucher tue Rick ; un tir laser ou une bombe le tue (+100 points). Quand Rick perd une vie, les ennemis vivants reviennent à leur place.</div>`;break;
   }
   h+=`<div class="row" style="margin-top:10px"><button id="bDel">Supprimer</button></div>`;
   P.innerHTML=h;
   P.querySelectorAll('input').forEach(i=>i.onchange=()=>{pushUndo();const k=i.dataset.k,v=Number(i.value);
     if(k==='len'&&o.k==='P'){const sx=Math.sign(o.dc),sy=Math.sign(o.dr);o.dc=sx*v;o.dr=sy*v;if(!sx&&!sy)o.dr=-v}
+    else if((k==='emn'||k==='emx')&&o.k==='N'){o[k==='emn'?'mn':'mx']=v>0?v-1:0}
     else if(k==='c2v'&&o.k==='W'){o.c2=Math.max(o.c+3,v-1)}
     else if(k==='spd'&&o.k==='L'){if(o.dy===0)o.dx=Math.sign(o.dx||1)*v;else o.dy=Math.max(1,v)}
     else if(k==='trL'&&o.k==='L'){if(v>HL){o.tr=v-HL;if(!o.tc)o.tc=o.c}else{o.tc=0;o.tr=0}}
@@ -915,6 +934,8 @@ function showProps(){
   const m=P.querySelector('select[data-k=mode]');if(m){m.value=o.mode;m.onchange=()=>{pushUndo();o.mode=m.value;draw()}}
   const t=P.querySelector('select[data-k=target]');if(t){const cands=foot.filter(x=>'PLZEGDW'.includes(x.k));
     t.onchange=()=>{pushUndo();o.t=t.value<0?null:cands[t.value];if(o.t&&o.t.k==='P')o.kind='plat';else if(o.t&&o.kind==='plat')o.kind='coupe';showProps();draw()}}
+  const ety=P.querySelector('select[data-k=ety]');if(ety){ety.value=o.ty;ety.onchange=()=>{pushUndo();o.ty=+ety.value;showProps();draw()}}
+  const edr=P.querySelector('select[data-k=edir]');if(edr){edr.value=o.dir?1:0;edr.onchange=()=>{pushUndo();o.dir=+edr.value;draw()}}
   const kd=P.querySelector('select[data-k=kind]');if(kd){kd.value=o.kind||'plat';kd.onchange=()=>{pushUndo();o.kind=kd.value;draw()}}
   document.getElementById('bDel').onclick=()=>{pushUndo();delObj(o)};
 }
@@ -959,7 +980,7 @@ function noFSA(){
   alert("Ce navigateur ne sait pas enregistrer directement dans un dossier : le fichier part dans « Téléchargements ».\n\nOuvre EDITEUR.HTML avec Microsoft Edge ou Google Chrome (clic droit sur le fichier > Ouvrir avec > Microsoft Edge) : l'enregistrement se fera alors dans RICK3D\\level, à la place du fichier ouvert.");
 }
 // limites du jeu (PARAMS.S : MAXPL, MAXSW, MAXLZ, MAXZP) : au-dela, les objets en trop sont ignores
-const GAME_MAX={P:[48,'plateformes / ascenseurs'],S:[48,'boutons'],L:[64,'lasers'],ZEGDW:[64,'rayons, bonbonnes et ondes']};
+const GAME_MAX={P:[48,'plateformes / ascenseurs'],S:[48,'boutons'],L:[64,'lasers'],ZEGDW:[64,'rayons, bonbonnes et ondes'],N:[32,'ennemis']};
 function checkLimits(){const bad=[];for(const k in GAME_MAX){const n=foot.filter(o=>k.includes(o.k)).length;
   if(n>GAME_MAX[k][0])bad.push(n+' '+GAME_MAX[k][1]+' (le jeu en lit '+GAME_MAX[k][0]+' au plus)')}
   if(bad.length)alert('Attention : trop d\'objets pour le jeu, les derniers seront ignorés :\n- '+bad.join('\n- '))}
@@ -1029,6 +1050,18 @@ TDEF.bv=[['rock',[0x39CA,0x4A49,0x62EF,0x2947]],['frame',[0x8414,0xAD55,0xCE5C,0
 TDEF.win={sets:[['ring',[0x9A84,0x6182,0xC4A8,0x40E1]],['lip',[0xE5CB,0x93A6,0xFF12,0x6A83]],['rivet',[0xD5F1,0x8BCA,0xF716,0x5A66]],
   ['tun',[0x4A6C,0x2947,0x18E5,0x6B71]],['space',[0x0022,0x6C96,0x4B11,0]],['star',[0x52D0,0x52D0,0x953A,0xFFFF]]],
   par:[['ft',8],['lip',2],['rz',4],['lz',7],['dep',16],['dens',20],['rsp',8],['refl',1]]};
+// ennemis (ENNEMIS.S) : TILES.DAT version 8 = a la fin du fichier, 4 jeux de couleurs (setptr 37..40)
+// puis leurs modeles (meme disposition et memes bits d'animation que Rick) ; DONNEES.S col_en*, mdl_en*
+const NSET_V7=TDEF.sets.length, NMDL_V7=TDEF.models.length;
+TDEF.sets.push(['enbody',[0xD365,0x9222,0xF50A,0x6161]],['enband',[0x94B5,0x5AED,0xCE5A,0x39E8]],
+  ['envisor',[0x3E47,0x1C03,0x7F8F,0x12C2]],['endark',[0x6982,0x40E1,0x9283,0x28A0]],['encream',[0xF6B5,0xB4F0,0xFFBA,0x8BAC]]);
+TDEF.models.push(['en1side','Ennemi 1 (garde robot) : de profil',[[2,0,10,6,-4,4,37,0],[1,1,11,5,-3,3,37,0],[1,5,11,7,-4,4,38,0],[8,2,12,5,-3,3,39,0],
+  [2,7,10,14,-4,4,37,0],[1,11,11,13,-5,5,38,0],[4,8,7,13,4,6,40,2048],[3,14,6,20,1,4,40,512],[6,14,9,20,-4,-1,40,256],[2,18,6,20,1,4,38,512],
+  [6,18,10,20,-4,-1,38,256],[4,8,7,12,-6,-4,37,1024],[4,12,7,14,-6,-4,38,1024],[4,-1,6,0,-1,1,38,0]]],
+ ['en1climb','Ennemi 1 (garde robot) : à l\'échelle',[[2,0,10,5,-4,4,37,0],[1,5,11,7,-4,4,38,0],[2,7,10,14,-4,4,37,0],[2,11,10,13,-5,5,38,0],
+  [0,4,2,10,-2,2,37,24576],[0,3,2,4,-2,2,38,24576],[10,4,12,10,-2,2,37,20480],[10,3,12,4,-2,2,38,20480],[3,14,6,20,-2,2,40,4096],[6,14,9,20,-2,2,40,8192]]],
+ ['en2side','Ennemi 2 (droïde cloche)',[[4,18,8,20,-2,2,40,0],[0,15,12,18,-5,5,37,0],[0,14,12,15,-5,5,41,0],[1,12,11,14,-4,4,18,0],
+  [2,9,10,12,-4,4,37,0],[9,10,12,13,-3,3,39,0],[5,7,7,9,-1,1,38,0],[5,6,7,7,-1,1,37,0]]]);
 let TS=JSON.parse(JSON.stringify(TDEF));
 // niveau 2 (cavernes de glace de Freezia) : memes tuiles, autres couleurs (roche de glace bleue,
 // fond presque noir, passerelles bleues, tuyaux bruns) ; a enregistrer sous level\TILES2.DAT
@@ -1061,7 +1094,8 @@ const SETN={plat:'Passerelle (=) / tabouret',bar:'Barre (-)',gird:'Poutre verte 
   lad:'Échelle (H)',mast:'Mât (M)',screw:'Vis (V Q)',thread:'Filets de vis',barrel:'Tonneau (T)',ring:'Cerclage tonneau',bartop:'Couvercle tonneau',
   mplat:'Ascenseur / plateforme',switch:'Bouton',glass:'Bonbonne bleue',greencan:'Bonbonne verte',bombcan:'Bonbonne bombes',redband:'Bande rouge',zap:'Rayon / laser',
   ball:'Boules noires (onde)',nozzle:'Émetteur de laser (buse)',tip:'Bout de la buse',pipe0:'Tuyau : reflet',pipe1:'Tuyau : gris moyen',pipe2:'Tuyau : ombre',pipe3:'Tuyau : ombre forte',
-  laser:'Tir laser de Rick',dyn:'Bombe de Rick',body:'Rick : chemise',legs:'Rick : pantalon',head:'Rick : visage et mains',hat:'Rick : chapeau',arm:'Rick : manches',pack:'Rick : sac à dos',hair:'Rick : cheveux',eye:'Rick : œil'};
+  laser:'Tir laser de Rick',dyn:'Bombe de Rick',body:'Rick : chemise',legs:'Rick : pantalon',head:'Rick : visage et mains',hat:'Rick : chapeau',arm:'Rick : manches',pack:'Rick : sac à dos',hair:'Rick : cheveux',eye:'Rick : œil',
+  enbody:'Ennemi 1 : corps cuivré',enband:'Ennemi 1 : bandes grises',envisor:'Ennemi 1 : visière verte',endark:'Ennemi 1 : jambes (cuivre foncé)',encream:'Ennemi 2 : bande crème'};
 const NSET_V2=20;                // jeux de couleurs des versions 1 et 2 (les suivants : version 3)
 const c565=v=>{const r=(v>>11)&31,g=(v>>5)&63,b=v&31;return [Math.round(r*255/31),Math.round(g*255/63),Math.round(b*255/31)]};
 const hex565=v=>'#'+c565(v).map(x=>x.toString(16).padStart(2,'0')).join('');
@@ -1205,41 +1239,48 @@ function stampPipe(x,y){
 // ---- fichier binaire
 function tilesToBytes(){
   const n=4+2+300*2+11*2+TS.sets.length*8+200+16*128+TS.models.length*256+24+64, b=new DataView(new ArrayBuffer(n));let o=0;
+  const wmdl=([k,l,parts])=>{const o0=o;for(const q of parts.slice(0,16))for(const v of q){b.setInt16(o,v);o+=2}b.setInt16(o,-99);o=o0+256};
   for(const ch of 'R3DT')b.setUint8(o++,ch.charCodeAt(0));
-  b.setUint16(o,7);o+=2;
+  b.setUint16(o,8);o+=2;
   for(const p of ['rock','frame','grass'])for(const v of TS.pats[p]){b.setUint16(o,v);o+=2}
   for(const [k,v] of TS.blk){b.setUint16(o,v);o+=2}
   TS.sets.slice(0,NSET_V2).forEach(([k,a])=>{for(const v of a){b.setUint16(o,v);o+=2}});
   for(const v of TS.pats.plate){b.setUint16(o,v);o+=2}     // (version 2)
-  TS.sets.slice(NSET_V2).forEach(([k,a])=>{for(const v of a){b.setUint16(o,v);o+=2}
+  TS.sets.slice(NSET_V2,NSET_V7).forEach(([k,a])=>{for(const v of a){b.setUint16(o,v);o+=2}
     if(k==='tip')for(const [kb,ab] of TS.bv)for(const v of ab){b.setUint16(o,v);o+=2}});   // (version 3 ; v7 : + vue de dos)
   for(const t of TS.tex)for(const v of t){b.setUint16(o,v);o+=2}                         // (version 4)
-  for(const [k,l,parts] of TS.models){const o0=o;
-    for(const q of parts.slice(0,16))for(const v of q){b.setInt16(o,v);o+=2}
-    b.setInt16(o,-99);o=o0+256}
+  TS.models.slice(0,NMDL_V7).forEach(wmdl);
   for(const [k,a] of TS.win.sets)for(const v of a){b.setUint16(o,v);o+=2}                // (version 7 : hublots)
   for(const [k,v] of TS.win.par){b.setInt16(o,v);o+=2}
+  TS.sets.slice(NSET_V7).forEach(([k,a])=>{for(const v of a){b.setUint16(o,v);o+=2}});   // (version 8 : ennemis)
+  TS.models.slice(NMDL_V7).forEach(wmdl);
   return new Uint8Array(b.buffer);
 }
 function bytesToTiles(u){
   const b=new DataView(u.buffer,u.byteOffset,u.byteLength);
   const ver=u.byteLength>=6?b.getUint16(4):0;
-  const v3=988+(TS.sets.length-NSET_V2)*8, v4=v3+16*128+13*256, v5=v3+16*128+22*256, v6=v3+16*128+TS.models.length*256, v7=v6+24+64;
-  if(String.fromCharCode(...u.slice(0,4))!=='R3DT'||!((ver===1&&u.byteLength===788)||(ver===2&&u.byteLength===988)||(ver===3&&u.byteLength===v3)||(ver===4&&u.byteLength===v4)||(ver===5&&u.byteLength===v5)||(ver===6&&u.byteLength===v6)||(ver===7&&u.byteLength===v7))){alert('Ce fichier n\'est pas un TILES.DAT valide.');return false}
-  let o=6;for(const p of ['rock','frame','grass'])for(let i=0;i<100;i++){TS.pats[p][i]=b.getUint16(o);o+=2}
+  const v3=988+(NSET_V7-NSET_V2)*8, v4=v3+16*128+13*256, v5=v3+16*128+22*256, v6=v3+16*128+NMDL_V7*256, v7=v6+24+64,
+        v8=v7+(TS.sets.length-NSET_V7)*8+(TS.models.length-NMDL_V7)*256;
+  if(String.fromCharCode(...u.slice(0,4))!=='R3DT'||!((ver===1&&u.byteLength===788)||(ver===2&&u.byteLength===988)||(ver===3&&u.byteLength===v3)||(ver===4&&u.byteLength===v4)||(ver===5&&u.byteLength===v5)||(ver===6&&u.byteLength===v6)||(ver===7&&u.byteLength===v7)||(ver===8&&u.byteLength===v8))){alert('Ce fichier n\'est pas un TILES.DAT valide.');return false}
+  let o=6;const rdm=m=>{const o0=o,parts=[];
+    for(let k=0;k<16;k++){const x0=b.getInt16(o);if(x0===-99)break;const q=[];for(let i=0;i<8;i++){q.push(b.getInt16(o));o+=2}parts.push(q)}
+    m[2]=parts;o=o0+256};
+  for(const p of ['rock','frame','grass'])for(let i=0;i<100;i++){TS.pats[p][i]=b.getUint16(o);o+=2}
   for(const e of TS.blk){e[1]=b.getUint16(o);o+=2}
   for(const e of TS.sets.slice(0,NSET_V2))for(let i=0;i<4;i++){e[1][i]=b.getUint16(o);o+=2}
   if(ver>=2)for(let i=0;i<100;i++){TS.pats.plate[i]=b.getUint16(o);o+=2}
   if(!TS.bv)TS.bv=JSON.parse(JSON.stringify(TDEF.bv));
-  if(ver>=3)for(const e of TS.sets.slice(NSET_V2)){for(let i=0;i<4;i++){e[1][i]=b.getUint16(o);o+=2}
+  if(ver>=3)for(const e of TS.sets.slice(NSET_V2,NSET_V7)){for(let i=0;i<4;i++){e[1][i]=b.getUint16(o);o+=2}
     if(ver>=7&&e[0]==='tip')for(const f of TS.bv)for(let i=0;i<4;i++){f[1][i]=b.getUint16(o);o+=2}}
   if(ver>=4){for(const t of TS.tex)for(let i=0;i<64;i++){t[i]=b.getUint16(o);o+=2}
-    for(const m of TS.models.slice(0,ver===4?13:ver===5?22:TS.models.length)){const o0=o,parts=[];
-      for(let k=0;k<16;k++){const x0=b.getInt16(o);if(x0===-99)break;const q=[];for(let i=0;i<8;i++){q.push(b.getInt16(o));o+=2}parts.push(q)}
-      m[2]=parts;o=o0+256}}
+    for(const m of TS.models.slice(0,ver===4?13:ver===5?22:NMDL_V7))rdm(m)}
   if(ver>=7){for(const e of TS.win.sets)for(let i=0;i<4;i++){e[1][i]=b.getUint16(o);o+=2}
     for(const e of TS.win.par){e[1]=b.getInt16(o);o+=2}}
   else TS.win=JSON.parse(JSON.stringify(TDEF.win));        // fichier plus ancien : hublots d'origine
+  if(ver>=8){for(const e of TS.sets.slice(NSET_V7))for(let i=0;i<4;i++){e[1][i]=b.getUint16(o);o+=2}   // ennemis
+    for(const m of TS.models.slice(NMDL_V7))rdm(m)}
+  else {TS.sets.slice(NSET_V7).forEach((e,i)=>e[1]=[...TDEF.sets[NSET_V7+i][1]]);   // plus ancien : ennemis d'origine
+    TS.models.slice(NMDL_V7).forEach((m,i)=>m[2]=JSON.parse(JSON.stringify(TDEF.models[NMDL_V7+i][2])))}
   return true;
 }
 let tilesHandle=null;
@@ -1554,6 +1595,8 @@ function renderTilesUI(){
   for(const k of ['nozzle','tip','ball','laser','dyn'])item('set',k,SETN[k],swi(k));
   sect('Rick');
   for(const k of ['body','legs','arm','head','hair','hat','pack','eye'])item('set',k,SETN[k],swi(k));
+  sect('Ennemis');
+  for(const [k] of TS.sets.slice(NSET_V7))item('set',k,SETN[k]||k,swi(k));
   sect('Décor');
   item('win','N','Hublot (N)',x=>winArt(x,0,0));
   sect('Formes des objets (3D)');
@@ -1659,7 +1702,7 @@ msg(FSA?'Ouvre RICK3D\\level\\LEVEL1.MAP avec « Ouvrir .MAP »':'ATTENTION : ou
 // Lit TS directement a chaque image : toute retouche de forme ou de couleur se voit tout de suite.
 const P3={key:'rickstand',follow:true,auto:true,yaw:-0.6,pitch:-0.35,zoom:1,ctx:'',drag:null};
 const P3_ASM={_stool:['Tabouret (assise + pied)',[['stoolseat',0,0],['stoolfoot',0,8]]]};
-const P3_OBJ={E:'canE',G:'canG',D:'canD',S:'switch',L:'nozzle',W:'ball',Z:'zapemit',P:'walkway',R:'rickstand',F:'rickstand'};
+const P3_OBJ={E:'canE',G:'canG',D:'canD',S:'switch',L:'nozzle',W:'ball',Z:'zapemit',P:'walkway',R:'rickstand',F:'rickstand',N:'en1side'};
 const P3_TILE={'=':'walkway','-':'bar',H:'ladder',M:'mast',V:'screwV',Q:'screwQ',G:'girdbeam',X:'pylon',x:'pylon',T:'barrel',O:'_stool',o:'_stool'};
 function p3Boxes(key){                       // boites [x0,y0,x1,y1,z0,z1,set,dessin] du modele (pieces assemblees)
   const out=[];
@@ -1708,6 +1751,7 @@ function p3Context(){                         // objet a montrer d'apres la sele
     if(tSel[0]==='set'){const i=TS.sets.findIndex(e=>e[0]===tSel[1]),m=TS.models.find(m=>m[2].some(q=>q[6]===i));return m?m[0]:null}
     return null}
   if(sel==='R')return 'rickstand';
+  if(sel&&sel.k==='N')return sel.ty==2?'en2side':'en1side';
   if(sel&&sel.k&&P3_OBJ[sel.k])return P3_OBJ[sel.k];
   if(tool.startsWith('obj'))return P3_OBJ[tool.slice(3)]||null;
   if(tool==='brush'||tool==='rect')return P3_TILE[cur]||null;

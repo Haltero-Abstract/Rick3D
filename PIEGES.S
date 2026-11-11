@@ -322,7 +322,7 @@ update_zaps:
                 cmp.w   #4,ZP_T(a2)
                 beq.s   .kill
                 clr.w   ZP_ON(a2)               ; canister : lasers (or bombs)
-                move.w  #1,items_dirty
+                bsr     can_erase               ; (only its box, no rebuild)
                 cmp.w   #2,ZP_T(a2)             ;  to the max
                 beq.s   .bmb
                 cmp.w   #3,ZP_T(a2)             ; green : points only
@@ -476,15 +476,80 @@ draw_zapemit:
                 rts
 
 draw_items:                                     ; canisters : in the fixed scenery
+                movem.l d0-d5/a0-a2,-(sp)
+                jsr     bg_ptrs
+                lea     bgbuf,a0                ; scenery without them (pickup)
+                move.l  bg_noitp,a1
+                move.w  #SCRSZ/16-1,d0
+.cp:            move.l  (a0)+,(a1)+
+                move.l  (a0)+,(a1)+
+                move.l  (a0)+,(a1)+
+                move.l  (a0)+,(a1)+
+                dbra    d0,.cp
+                bra.s   draw_items_go
+; draw_items_nc : the same, bg_noitp is already the scenery without them
+;   (background build, BGBUILD.S)
+draw_items_nc:
+                movem.l d0-d5/a0-a2,-(sp)
+draw_items_go:
+                lea     zaps,a0                 ; no box recorded yet
+                move.w  nzp,d0
+                bra.s   .cn
+.cz:            clr.l   ZP_BP(a0)
+                lea     ZP_SIZE(a0),a0
+.cn:            dbra    d0,.cz
+                move.w  #1,can_rec
                 move.w  #1,zp_mode
-                bsr.s   draw_zaps
+                bsr     draw_zaps
                 clr.w   zp_mode
+                clr.w   can_rec
+                move.l  #can_pool,a1            ; boxes drawn (canister + its
+                lea     zaps,a2                 ;  bar) : pixels kept
+                move.w  nzp,d5
+                bra     .pn
+.pl:            cmp.l   #2,ZP_BP(a2)
+                bne     .pk
+                movem.w ZP_BX0(a2),d0-d3
+                sub.w   d0,d2                   ; d2 = width - 1
+                sub.w   d1,d3                   ; d3 = height - 1
+                move.w  d2,d4
+                addq.w  #1,d4
+                mulu    d3,d4
+                add.w   d2,d4
+                addq.l  #1,d4
+                add.l   d4,d4
+                add.l   a1,d4
+                cmp.l   #can_pool+2*CANPOOL_W,d4
+                bls.s   .ok
+                clr.l   ZP_BP(a2)               ; pool full : rebuild at pickup
+                bra.s   .pk
+.ok:            move.l  a1,ZP_BP(a2)
+                mulu    #LINEB,d1
+                add.w   d0,d0
+                ext.l   d0
+                add.l   d0,d1
+                lea     bgbuf,a0
+                add.l   d1,a0
+.ly:            move.w  d2,d0
+                move.l  a0,d1
+.lx:            move.w  (a0)+,(a1)+
+                dbra    d0,.lx
+                move.l  d1,a0
+                lea     LINEB(a0),a0
+                dbra    d3,.ly
+.pk:            lea     ZP_SIZE(a2),a2
+.pn:            dbra    d5,.pl
+                movem.l (sp)+,d0-d5/a0-a2
                 rts
+
 ; zigzag : electric line (beams and waves have the same shape) from
 ;   d0 to d2 (screen x), in the band d1 .. d1+6 : lines of 4 pixels
 ;   going up and down (0 2 4 2), the oscillation moves every ZZ_SLOW frames
 ZZ_SLOW         equ     4
 zigzag:
+                tst.w   view_back               ; side view : zz_fast (ZIGZAG.S)
+                beq     zz_fast
+zz_old:
                 movem.l d0-d7,-(sp)
                 move.w  d2,d7                   ; d7 = end
                 move.w  d1,d6                   ; d6 = top of the band
@@ -662,6 +727,7 @@ draw_zaps:                                      ; beams : every frame
 .can:           cmp.w   #5,ZP_T(a2)
                 beq     .deco
                 movem.l d6-d7/a2,-(sp)          ; canister : model (TILES.DAT)
+                move.l  a2,can_cur
                 move.w  d0,d6
                 move.w  d1,d7
                 moveq   #0,d5
@@ -673,7 +739,7 @@ draw_zaps:                                      ; beams : every frame
 .cg:            cmp.w   #3,d4
                 bne.s   .cd
                 lea     mdl_canG,a2             ; green
-.cd:            bsr     draw_model
+.cd:            bsr     can_model
                 movem.l (sp)+,d6-d7/a2
 .deco:          movem.l d0-d7,-(sp)             ; electric scenery bar :
                 move.w  d0,d6                   ;  grey ends + blue segments
@@ -840,6 +906,34 @@ draw_lasers:
 ; zap_rect : flat rectangle d0,d1 - d2,d3 (centred world coord.) projected on
 ;   the middle plane and filled at once (laser lines, waves : much
 ;   faster than a 3D box) ; registers preserved
+; ZPROJ reg,centre : reg = centre + reg x FOC / ZMID (table zp_ptab, a0
+;   -> its middle) ; out of the table -> .slow
+ZPROJ           macro
+                cmp.w   #-512,\1
+                blt.s   .slow
+                cmp.w   #511,\1
+                bgt.s   .slow
+                add.w   \1,\1
+                move.w  (a0,\1.w),\1
+                add.w   #\2,\1
+                endm
+
+; zp_mktab : zp_ptab[v] = v x FOC / ZMID (like divs), v = -512..511
+zp_mktab:
+                movem.l d0-d1/a0,-(sp)
+                lea     zp_ptab,a0
+                move.w  #-512,d1
+.l:             move.w  d1,d0
+                muls    #FOC,d0
+                divs    #ZMID,d0
+                move.w  d0,(a0)+
+                addq.w  #1,d1
+                cmp.w   #512,d1
+                blt.s   .l
+                move.w  #1,zp_tok
+                movem.l (sp)+,d0-d1/a0
+                rts
+
 zap_rect:
                 tst.w   view_back               ; back view : a thin box
                 beq.s   .side
@@ -855,6 +949,19 @@ zap_rect:
                 movem.l (sp)+,d4-d5/a1
                 rts
 .side:          movem.l d0-d3/d7,-(sp)
+                tst.w   zp_tok                  ; projection at ZMID : table
+                bne.s   .tk                     ;  (4 divs per rectangle before)
+                bsr     zp_mktab
+.tk:            move.l  a0,-(sp)
+                lea     zp_ptab+1024,a0         ; (index 0 in the middle)
+                ZPROJ   d0,CX
+                ZPROJ   d2,CX
+                ZPROJ   d1,CY
+                ZPROJ   d3,CY
+                move.l  (sp)+,a0
+                bra.s   .pj
+.slow:          move.l  (sp)+,a0                ; (out of the table)
+                movem.l (sp),d0-d3
                 muls    #FOC,d0
                 divs    #ZMID,d0
                 add.w   #CX,d0
@@ -867,7 +974,7 @@ zap_rect:
                 muls    #FOC,d3
                 divs    #ZMID,d3
                 add.w   #CY,d3
-                subq.w  #1,d2                   ; (bounds included)
+.pj:            subq.w  #1,d2                   ; (bounds included)
                 subq.w  #1,d3
                 cmp.w   d0,d2
                 bge.s   .w

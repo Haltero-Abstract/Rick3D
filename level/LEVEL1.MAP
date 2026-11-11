@@ -182,7 +182,7 @@
 ###################################Fk.......................F#####FFkV..F######Fk.....Gkkk..FF#####FkUUkkkkk.UUkF######################FkkkkkUUk.........UUkF###
 ###################################Fk.......................F######FkV..F######Fk.....Gkkk..F######FkUUk.....UUkF######################Fk....UUk.........UUkF###
 ###################################F=HH=====k...............F######FkV..FF#####FFFFFFFFFFFFFF######FUUUk.....UUUF######################Fk....UUUUUU......UUkF###
-###################################F.HH.....k...............F######FkV...F#########################FUUUk.....UUUF.FFFFFFFFFFFFFFFFFFFFFFk....UUUUUUk.....UUkF###
+###################################F.HH.....k...............F######FkV...F#########################FUUUk.....UUUFFFFFFFFFFFFFFFFFFFFFFFFk....UUUUUUk.....UUkF###
 ###################################FkHHkkkkkk...............F######FkV..FF#########################Fkkkk.....UUkBBBkkkBBBkkkkkkkkkkkkkkkk......kkUUk...k.UUkF###
 ###################################FkHH.....................F###FFFFkV..F##########################Fk........UUkBBBkkkBBBkkkkkkkkkkkkkkkk........UUk...k.UUkF###
 ###################################FkHH.....................F###FkkkkV..F##########################Fk....UUw-FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFk....UUk.UUwwUUkF###
@@ -210,9 +210,9 @@
 #######Fk.........Gk..Gk..GkF######FkV...XX.............F##########Fk.............kk......kkF######FkkkkkkkkkxX.k...........F###################################
 ###FFFFFGGGGGGGGGGGGk.GkGGGGF######FkV...XX.............F##########Fk.......................F######Fk........XX.............F###################################
 ###FkkkkkkkkkkGkkkkk..GkkkkkF######FkV..=====HH=========F##########FTTTTk...................F#####FFk........XX.....TTTTTTTTF###################################
-###Fk.........Gk......Gk....F######FkV.......HH.........F##########FTTTTk...................F#####Fkk........XX.OO..TTTTTTTTF###################################
-###Fk.........Gk......Gk....F######FkV..kkkkkHHkk.kkkkkkF##########FTTTTk...................F#####FFk........XX.OOk.TTTTTTTTF###################################
-###Fk.......GGGGGGGGGGGGGGGGFFFFFFFFkV.......HHk........FFFFF######FTTTTk...................F######Fk........XX.OOk.TTTTTTTTF###################################
+###Fk.........Gk......Gk....F######FkV.......HH.........F##########FTTTTk...................F#####Fkk........XX.oo..TTTTTTTTF###################################
+###Fk.........Gk......Gk....F######FkV..kkkkkHHkk.kkkkkkF##########FTTTTk...................F#####FFk........XX.ook.TTTTTTTTF###################################
+###Fk.......GGGGGGGGGGGGGGGGFFFFFFFFkV.......HHk........FFFFF######FTTTTk...................F######Fk........XX.ook.TTTTTTTTF###################################
 ###FUUUUUUU.kkGkkkkkkkGkkkkkkkkkBBBk.V.......kkk........kkkkF######FFFFFFFFF=HH=============F######F.V..FFFFFFFFFFFFFFFFFFFFF###################################
 ###FUUUUUUUk..Gk......Gk........BBBk.V......................F##############FkHH.............F######FkV..F#######################################################
 ###FkkkkkUUk..Gk.....kGk........BBBk.V.............kkkkkkkkkF##############FkHHk..kkkkkk..kkF######FkV..F#######################################################
@@ -378,3 +378,26 @@ Z 116 186 8 1 90 90
 Z 73 135 14 1 70 90 2
 ; --- F col ligne : fin du niveau (coin haut-gauche de Rick, comme le depart)
 F 94 14
+; --- N type col ligne [sens] [cmin cmax] : ennemi (1 = garde robot, 2 = droide cloche) ; coin haut-gauche, 2 tuiles de haut comme Rick ; sens 0 = droite, 1 = gauche ; cmin cmax = bornes de patrouille (type 2)
+N 1 82 235 0
+N 1 87 34 1
+N 1 77 82 1
+N 1 87 106 0
+N 1 103 154 1
+N 1 116 166 1
+N 1 88 169 0
+N 1 106 178 0
+N 1 83 194 1
+N 1 75 214 0
+N 1 104 226 1
+N 1 115 226 1
+N 1 37 182 1
+N 1 53 202 1
+N 2 84 30 0 83 85
+N 2 76 70 0 74 78
+N 2 83 122 0 80 84
+N 2 87 122 1 85 88
+N 2 102 134 0 100 103
+N 2 119 142 1 111 119
+N 2 106 198 1 103 106
+N 2 46 142 1 42 46

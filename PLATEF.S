@@ -68,6 +68,8 @@ ZP_WQ           rs.w    1               ;  position in 1/4 pixel
 ZP_WW           rs.w    1               ;  width of the wave
 ZP_ROD          rs.w    1               ;  height of the rods (towards the ceiling)
 ZP_MV           rs.w    1               ; 1 = back-and-forth beam (Z ... 2)
+ZP_BX0          rs.w    4               ; canister : drawn box in bgbuf (x0,y0,x1,y1)
+ZP_BP           rs.l    1               ;  its pixels in can_pool (0 none, 1 empty, 2 box only)
 ZP_SIZE         rs.b    0
 
 ; parse_extras : P / S lines after the map (a0 = text)
@@ -77,6 +79,7 @@ parse_extras:
                 clr.w   nsw
                 clr.w   nlz
                 clr.w   nzp
+                clr.w   nen                     ; (enemies : ENNEMIS.S)
 .l:             move.b  (a0)+,d0
                 beq     .x
                 cmp.b   #';',d0
@@ -99,7 +102,11 @@ parse_extras:
                 beq     .wv
                 cmp.b   #'F',d0                 ; F col line : end of the level
                 beq     .fin
+                cmp.b   #'N',d0                 ; N type col line [dir] : enemy
+                beq     .enm
                 bra     .l
+.enm:           bsr     en_parse
+                bra     .skip
 .fin:           bsr     readsint                ; (top-left cell of Rick,
                 move.w  d0,end_col              ;  like the start)
                 bsr     readsint
@@ -109,7 +116,7 @@ parse_extras:
                 beq     .x
                 cmp.b   #10,d0
                 bne.s   .skip
-                bra.s   .l
+                bra     .l
 .plat:          move.w  nplats,d0
                 cmp.w   #MAXPL,d0
                 bhs.s   .skip
@@ -694,11 +701,13 @@ draw_plats:
                 addq.w  #4,d3
                 bsr     boxvis
                 bne.s   .pk
+                jsr     plat_spr                ; cached sprite (SPRITES.S, S key)
+                beq.s   .pp
                 move.w  #PLAT_Z0,d4             ; tube in the middle of the depth :
                 move.w  #PLAT_Z1,d5             ;  does not overlap the walls
                 lea     col_mplat,a1
                 bsr     draw_box
-                bsr     bb_push
+.pp:            bsr     bb_push
 .pk:            lea     PL_SIZE(a2),a2
 .pn:            dbra    d7,.pl
                 rts

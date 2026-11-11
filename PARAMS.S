@@ -84,7 +84,9 @@ END_DUR         equ     180             ; end of the level reached : message, th
 ;---------------------------------------------------------------------
 LAS_LEN         equ     10              ; length of the laser line
 LAS_SPD         equ     5               ; laser speed (units / frame)
-BOMB_SPD        equ     2               ; thrown bomb (fire + down diagonal) : speed
+BOMB_SPD        equ     1               ; thrown bomb (fire + down diagonal) : speed
+BOMB_DIST       equ     48              ; thrown bomb : slide distance (px, ~4 Rick)
+BOMB_FALLMAX    equ     4               ; bomb : max fall speed (px/frame)
 BOMB_FUSE       equ     90              ; fuse : frames before the explosion
 BOMB_EXPL       equ     24              ; duration of the explosion
 BOMB_KILL       equ     22              ; deadly radius of the explosion
@@ -107,6 +109,53 @@ WAVE_Y1         equ     20              ;  top of the balls + 8 to + 20 : Rick s
                                         ;  (16 high) is hit, crouching (12) is not
 
 ;---------------------------------------------------------------------
+; ENEMIES (N lines of the .MAP, ENNEMIS.S ; speeds and ranges of each
+;   type : table en_types in ENNEMIS.S)
+;---------------------------------------------------------------------
+EN_W            equ     12              ; collision / drawing width (like Rick)
+EN_H            equ     20              ; height (like Rick standing)
+EN_HIT          equ     2               ; contact with Rick : boxes reduced by 2 on each side
+EN_DIE_T        equ     30              ; killed : blinks for 30 frames, then disappears
+EN_GIVEUP       equ     90              ; follow : stuck while chasing -> patrols for 90 frames
+
+;---------------------------------------------------------------------
+; CACHED SPRITES of Rick and the enemies (SPRITES.S ; S key in game)
+;---------------------------------------------------------------------
+PRE_MODE        equ     1               ; all the screens of the level built at its loading
+                                        ;  (PREBUILD.S) when the memory is enough : 1 = yes,
+                                        ;  0 = no (built during the game, BG_ON)
+PRE_MSGY        equ     110             ;  line of the message (loading)
+PRE_NEAR        equ     16              ;  bomb : screens checked up to 16 tiles away
+PRE_STEP        equ     16              ;  rows of the grid of the fixed screens
+PRE_MAX         equ     160             ;  screens max per level
+PRE_RESERVE     equ     262144          ;  memory left free (bytes)
+BG_ON           equ     1               ; next screen built in the background (BGBUILD.S) :
+                                        ;  1 = yes, 0 = no (whole build at the screen change)
+BG_FRAME        equ     600             ;  it works until this time after the start of the
+                                        ;  frame (Timer D ticks of 20.3 us : 600 = 12.2 ms, a
+                                        ;  60 Hz frame is 16.7 ms)
+BG_FRAMEP       equ     740             ;  (the current screen after a bomb : until 15 ms)
+BG_MIN          equ     50              ;  (less than 1 ms left : waits for the next frame)
+BG_PRE          equ     10              ;  started when Rick is BG_PRE tiles before the
+                                        ;  scrolling zone (SC_EDGE / SC_VEDGE), going towards it
+BG_STABLE       equ     20              ;  a build in progress is dropped for another guess
+                                        ;  only if that guess stays BG_STABLE frames
+BG_STACK        equ     8192            ;  its stack (bytes)
+BLD_DSP         equ     0               ; building a screen : 0 = 3D by the 030 (the DSP and the
+                                        ;  interrupts stay free for the music), 1 = by the DSP
+SPR_ON_INIT     equ     1               ; 1 : cached sprites at start, 0 : 3D drawing
+SPR_POOL        equ     524288          ; pool of the sprites (bytes ; emptied when full)
+SPR_HASH        equ     1024            ; hash table (power of 2)
+SPR_KEY         equ     $F81F           ; transparent colour (magenta : never in the models)
+SPR_ZREF        equ     ZMID-4          ; plane used to place the sprites (front of the body)
+SPR_BSH         equ     5               ; perspective buckets : 2^5 = 32 world units (about 38 pixels)
+                                        ;  (smaller = closer side faces, but more sprites to draw)
+SPR_SUBX        equ     0               ; sub-pixel phases in X : 0 = 1, 1 = 2, 2 = 4, 3 = 8 (closer
+                                        ;  to the 3D drawing, but more sprites to draw / keep)
+SPR_SUBY        equ     0               ;  in Y
+SPR_MAXL        equ     60              ; longs per span max (120 pixels)
+
+;---------------------------------------------------------------------
 ; PLATFORMS / LIFTS (P lines of the .MAP)
 ;---------------------------------------------------------------------
 PLAT_WAIT       equ     60              ; back-and-forth (mode A) : pause at each end
@@ -120,6 +169,7 @@ MAXPL           equ     48              ; platforms / lifts (P)
 MAXSW           equ     48              ; buttons (S)
 MAXLZ           equ     64              ; trap lasers (L)
 MAXZP           equ     64              ; beams + canisters (Z E G D)
+MAXEN           equ     32              ; enemies (N)
 LEV_MAX         equ     100000          ; map : max width x height (level 2 : 288 x 271)
 FILE_MAX        equ     120000          ; max size of the .MAP file
 
@@ -162,7 +212,18 @@ SCR_TH          equ     24
 TPX             equ     10              ; a tile = 10 pixels at ZF
 OX              equ     128             ; centre of the screen (world units)
 OY              equ     96
+CANPOOL_W        equ     8192            ; words : canister boxes (pickup without rebuild)
 MAXR            equ     32              ; rectangles to erase per frame
+MAXS            equ     24              ; cached sprites erased by their spans per frame
 BRK_MAX         equ     64              ; (stack to blow up a plate)
 YM_SEL          equ     $ffff8800       ; YM2149 registers
 YM_WR           equ     $ffff8802
+
+; BGCHK : point where the background build (BGBUILD.S) can give the hand
+;   back to the game (time of the frame used) ; nothing when not in it
+BGCHK           macro
+                tst.w   bg_in
+                beq.s   .bk\@
+                jsr     bg_check
+.bk\@:
+                endm

@@ -29,7 +29,10 @@ tile_at:
                 moveq   #0,d2
                 move.b  (a0,d0.w),d2
                 move.l  (sp)+,a0
+                tst.w   bg_nob                  ; (background build of the screen
+                bne.s   .nob                    ;  without its plates, BGBUILD.S)
                 rts
+.nob:           jmp     bg_nobc
 .out:           moveq   #'#',d2
                 rts
 
@@ -195,9 +198,9 @@ load_tiles:
                 lea     filebuf,a0              ; signature
                 cmp.l   #'R3DT',(a0)
                 bne     .x
-                move.w  4(a0),d0                ; version 1 .. 7
-                beq     .x
-                cmp.w   #7,d0
+                move.w  4(a0),d0                ; version 1 .. 8 (7 : without the
+                beq     .x                      ;  enemies -> built-in ones kept)
+                cmp.w   #8,d0
                 bhi     .x
                 lsl.w   #2,d0
                 lea     ts_sizes,a1
@@ -320,6 +323,7 @@ load_level:
                 clr.w   nplats
                 clr.w   nsw
                 clr.w   nlz
+                clr.w   nen
                 rts
 .fail:          move.w  #1,lvlerr
                 move.w  #-1,end_col
@@ -327,6 +331,7 @@ load_level:
                 clr.w   nplats
                 clr.w   nsw
                 clr.w   nlz
+                clr.w   nen
                 move.w  #SCR_TW,lev_w           ; backup room 32 x 24
                 move.w  #SCR_TH,lev_h
                 move.w  #4,st_col

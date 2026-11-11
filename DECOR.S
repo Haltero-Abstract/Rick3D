@@ -11,12 +11,83 @@
 ;  4. platforms, bars, girders, ladders (3D boxes)
 build_screen:
                 movem.l d0-d7/a0-a6,-(sp)
+                jsr     bld_begin               ; (sound goes on, see ZIGZAG.S)
                 lea     bgbuf,a6
                 tst.w   view_back               ; back view (V key)
                 beq.s   .side
                 bsr     build_back
                 bra     .done
-.side:
+.side:          jsr     bg_take                 ; built in the background (BGBUILD) ?
+                bne.s   .full                   ;  yes : scenery + front faces
+                bsr     draw_items_nc           ;  ready ; canisters (bg_noitp =
+                jsr     bg_canfront             ;  the scenery without them), front
+                bra.s   .done                   ;  faces again over them
+.full:          tst.w   pre_on                  ; (buffer of a screen built at the
+                beq.s   .f0                     ;  loading : not to be overwritten)
+                move.l  #bg_noit,bg_noitp
+.f0:            jsr     bg_curmap               ; (tiles of this screen : bg_dirty)
+                bsr     bld_head
+                bsr     draw_items
+                moveq   #0,d0                   ; --- 5. front faces of the blocks
+                moveq   #0,d1                   ;  (patterns) LAST : the front plane
+                moveq   #SCR_TW-1,d2            ;  hides what is behind (walkways,
+                moveq   #SCR_TH-1,d3            ;  bars...)
+                bsr     bld_front
+
+
+.done:          ; the 2 screens must get the whole scenery : it is done
+                ; when drawing in each of them (never in the screen being
+                ; shown -> no scenery built "in sight")
+                move.w  #1,rlist0+L_FULL
+                move.w  #1,rlist1+L_FULL
+                clr.w   txts0                   ; text to redraw
+                clr.w   txts1
+                clr.w   huds0
+                clr.w   huds1
+                clr.w   need_rebuild
+                jsr     bld_end
+                movem.l (sp)+,d0-d7/a0-a6
+                rts
+
+;---------------------------------------------------------------------
+; bld_front : front faces of the blocks (patterns) of the tiles d0..d2 /
+;   d1..d3 of the screen, in a6
+bld_front:
+                movem.l d0-d7/a0,-(sp)
+                move.w  d0,d4                   ; d4 = first column
+                move.w  d2,d5                   ; d5 = last column
+                move.w  d3,d6                   ; d6 = last row
+.p5:            move.w  d4,d0
+.p5c:           bsr     scell
+                bsr     isblk
+                bne.s   .p5n
+                lea     pat_rock,a0
+                cmp.b   #'g',d2
+                bne.s   .p5g
+                lea     pat_grass,a0
+.p5g:           cmp.b   #'F',d2
+                bne.s   .p5p
+                lea     pat_frame,a0
+.p5p:           cmp.b   #'B',d2
+                bne.s   .p5b
+                lea     pat_plate,a0
+.p5b:           bsr     blit10
+.p5n:           BGCHK
+                addq.w  #1,d0
+                cmp.w   d5,d0
+                ble.s   .p5c
+                addq.w  #1,d1
+                cmp.w   d6,d1
+                ble.s   .p5
+                movem.l (sp)+,d0-d7/a0
+                rts
+
+;---------------------------------------------------------------------
+; bld_head : scenery of the screen win_tx / win_ty in a6 (bgbuf, or bgnext
+;   for the background build), everything before the canisters and the
+;   front faces (bld_tail of build_screen). BGCHK : the background build
+;   gives the hand back to the game when its time per frame is used.
+bld_head:
                 move.l  a6,a0                   ; black background
                 move.w  #SCRSZ/16-1,d0
                 moveq   #0,d1
@@ -24,7 +95,11 @@ build_screen:
                 move.l  d1,(a0)+
                 move.l  d1,(a0)+
                 move.l  d1,(a0)+
-                dbra    d0,.cl
+                move.w  d0,d2                   ; (background build : every
+                and.w   #127,d2                 ;  8 KB, see BGCHK)
+                bne.s   .cl0
+                BGCHK
+.cl0:           dbra    d0,.cl
 
                 ; --- 1. back wall
                 moveq   #0,d1
@@ -65,7 +140,9 @@ build_screen:
                 add.w   #CY-1,d3
                 bsr     rectf
                 movem.w (sp)+,d0-d1
-.bn:            addq.w  #1,d0
+.bn:
+                BGCHK
+                addq.w  #1,d0
                 cmp.w   #SCR_TW,d0
                 blt     .bx
                 addq.w  #1,d1
@@ -100,7 +177,9 @@ build_screen:
                 bne.s   .p1c
                 move.w  c_frside,d7
 .p1c:           bsr     vface
-.p1n:           addq.w  #1,d1
+.p1n:
+                BGCHK
+                addq.w  #1,d1
                 cmp.w   #SCR_TH,d1
                 blt.s   .p1r
                 addq.w  #1,d0
@@ -131,7 +210,9 @@ build_screen:
                 bne.s   .p2c
                 move.w  c_frside,d7
 .p2c:           bsr     vface
-.p2n:           addq.w  #1,d1
+.p2n:
+                BGCHK
+                addq.w  #1,d1
                 cmp.w   #SCR_TH,d1
                 blt.s   .p2r
                 subq.w  #1,d0
@@ -163,7 +244,9 @@ build_screen:
                 bne.s   .p3k
                 move.w  c_frbot,d7
 .p3k:           bsr     hface
-.p3n:           addq.w  #1,d0
+.p3n:
+                BGCHK
+                addq.w  #1,d0
                 cmp.w   #SCR_TW,d0
                 blt.s   .p3c
                 addq.w  #1,d1
@@ -194,7 +277,9 @@ build_screen:
                 bne.s   .p4k
                 move.w  c_frtop,d7
 .p4k:           bsr     hface
-.p4n:           addq.w  #1,d0
+.p4n:
+                BGCHK
+                addq.w  #1,d0
                 cmp.w   #SCR_TW,d0
                 blt.s   .p4c
                 subq.w  #1,d1
@@ -207,45 +292,6 @@ build_screen:
                 bsr     draw_switches
                 bsr     draw_nozzles
                 bsr     draw_zapemit
-                bsr     draw_items
-
-                ; --- 5. front faces of the blocks (patterns) LAST : the front plane
-                ;        hides what is behind (walkways, bars...)
-                moveq   #0,d1
-.p5:            moveq   #0,d0
-.p5c:           bsr     scell
-                bsr     isblk
-                bne.s   .p5n
-                lea     pat_rock,a0
-                cmp.b   #'g',d2
-                bne.s   .p5g
-                lea     pat_grass,a0
-.p5g:           cmp.b   #'F',d2
-                bne.s   .p5p
-                lea     pat_frame,a0
-.p5p:           cmp.b   #'B',d2
-                bne.s   .p5b
-                lea     pat_plate,a0
-.p5b:           bsr     blit10
-.p5n:           addq.w  #1,d0
-                cmp.w   #SCR_TW,d0
-                blt.s   .p5c
-                addq.w  #1,d1
-                cmp.w   #SCR_TH,d1
-                blt.s   .p5
-
-
-.done:          ; the 2 screens must get the whole scenery : it is done
-                ; when drawing in each of them (never in the screen being
-                ; shown -> no scenery built "in sight")
-                move.w  #1,rlist0+L_FULL
-                move.w  #1,rlist1+L_FULL
-                clr.w   txts0                   ; text to redraw
-                clr.w   txts1
-                clr.w   huds0
-                clr.w   huds1
-                clr.w   need_rebuild
-                movem.l (sp)+,d0-d7/a0-a6
                 rts
 
 ;---------------------------------------------------------------------
@@ -699,6 +745,7 @@ projb:
 
 ; rectf : filled rectangle d0,d1 - d2,d3, colour d7, screen a6, clipped
 rectf:
+                BGCHK                           ; (background build : pause ?)
                 movem.l d0-d4/a0-a1,-(sp)
                 tst.w   d0
                 bpl.s   .1
@@ -720,12 +767,31 @@ rectf:
                 lea     (a6,d1.l),a0
                 add.w   d0,d0
                 adda.w  d0,a0
+                move.w  d7,d0                   ; colour on 2 pixels (long words)
+                swap    d0
+                move.w  d7,d0
 .y:             move.l  a0,a1
                 move.w  d2,d4
-.xl:            move.w  d7,(a1)+
-                dbra    d4,.xl
-                lea     LINEB(a0),a0
-                dbra    d3,.y
+                addq.w  #1,d4                   ; d4 = pixels
+                move.l  a1,d1
+                btst    #1,d1                   ; long words aligned
+                beq.s   .al
+                move.w  d0,(a1)+
+                subq.w  #1,d4
+.al:            move.w  d4,d1
+                lsr.w   #1,d1
+                bra.s   .l1
+.xl:            move.l  d0,(a1)+
+.l1:            dbra    d1,.xl
+                btst    #0,d4
+                beq.s   .nl
+                move.w  d0,(a1)+
+.nl:            lea     LINEB(a0),a0
+                move.w  d3,d1                   ; (background build : every
+                and.w   #15,d1                  ;  16 lines, see BGCHK)
+                bne.s   .nc
+                BGCHK
+.nc:            dbra    d3,.y
 .x:             movem.l (sp)+,d0-d4/a0-a1
                 rts
 
@@ -1267,7 +1333,8 @@ psol:           bsr     scell
 build_pipes:
                 moveq   #0,d1
 .row:           moveq   #0,d0
-.col:           bsr     pnb
+.col:           BGCHK
+                bsr     pnb
                 bne     .nx
                 moveq   #0,d4                   ; neighbouring pipes
                 subq.w  #1,d0

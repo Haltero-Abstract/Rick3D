@@ -88,21 +88,27 @@ do_keys:
                 tst.w   d0
                 bmi     .x
                 cmp.w   #$27,d0                 ; M (AZERTY)
-                beq.s   .mus
+                beq     .mus
                 cmp.w   #$32,d0                 ; M (QWERTY)
-                beq.s   .mus
+                beq     .mus
                 cmp.w   #$19,d0                 ; P
-                beq.s   .pause
+                beq     .pause
                 cmp.w   #$23,d0                 ; H
-                beq.s   .hide
+                beq     .hide
                 cmp.w   #$17,d0                 ; I : infinite lives on / off
-                beq.s   .inf
+                beq     .inf
                 cmp.w   #$22,d0                 ; G : map scrolling on / off
                 beq     .glis
                 cmp.w   #$2f,d0                 ; V : side view / back view
                 beq     .view
                 cmp.w   #$20,d0                 ; D : 3D maths DSP / 030
                 beq     .d3d
+                cmp.w   #$26,d0                 ; L : writes the log RICK3D.LOG
+                beq     .plog
+                cmp.w   #$14,d0                 ; T : profiler on / off
+                beq     .prof
+                cmp.w   #$1f,d0                 ; S : cached sprites on / off
+                beq     .spr
                 cmp.w   #$13,d0                 ; R : saves the position
                 beq     .rec
                 cmp.w   #$30,d0                 ; B : back to the position
@@ -145,6 +151,12 @@ do_keys:
                 bra     .lp
 .d3d:           jsr     d3dkey
                 move.w  #1,need_rebuild
+                bra     .lp
+.plog:          jsr     prof_logkey
+                bra     .lp
+.prof:          jsr     prof_key
+                bra     .lp
+.spr:           jsr     spr_toggle
                 bra     .lp
 .rec:           bsr     pos_record
                 bra     .lp

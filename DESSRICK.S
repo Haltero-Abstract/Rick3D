@@ -140,6 +140,8 @@ draw_rick0:
                 add.w   rk_h,d7
                 sub.w   #DRAW_H,d7              ; top of the standing box
                 sub.w   win_oy,d7               ; world Y
+                jsr     rick_spr                ; cached sprite (SPRITES.S, S key)
+                beq     .end
                 ; --- parts (model) : x0,y0,x1,y1,z0,z1, colours, anim<<8
 .part:          move.w  (a2)+,d0
                 cmp.w   #-99,d0

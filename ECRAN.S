@@ -53,7 +53,16 @@ L_YMIN          rs.w    1               ; top / bottom of all the rectangles
 L_YMAX          rs.w    1
 L_FULL          rs.w    1               ; 1 : the whole screen (new scenery)
 L_R             rs.w    4*MAXR          ; x0, y0, x1, y1
+L_SN            rs.w    1               ; cached sprites drawn (SPRITES.S) :
+L_S             rs.b    SE_SZ*MAXS      ;  erased by their own spans
 L_SIZE          rs.b    0
+                rsreset                 ; a cached sprite drawn :
+SE_LP           rs.l    1               ;  1st line drawn (in the pool)
+SE_OFF          rs.l    1               ;  offset of that line on the screen
+SE_NL           rs.w    1               ;  lines - 1
+SE_GEN          rs.w    1               ;  pool generation (emptied : rectangle)
+SE_X0           rs.w    4               ;  rectangle x0, y0, x1, y1
+SE_SZ           rs.b    0
 
 erase_full:
                 lea     bgbuf,a0
@@ -78,7 +87,10 @@ erase_list:
                 rts
 
 ; erase_one : copies the scenery back into d0,d1 - d2,d3 (screen a6)
+;   (word first if x0 is odd : long words aligned ; then groups of
+;   8 longs by movem, the rest by move.l)
 erase_one:
+                movem.l d7/a4-a5,-(sp)
                 lea     bgbuf,a0
                 move.w  d1,d4
                 mulu    #LINEB,d4
@@ -90,14 +102,48 @@ erase_one:
                 lea     (a6,d4.l),a1
                 sub.w   d0,d2
                 sub.w   d1,d3
+                move.w  d2,d4                   ; (profiler : words copied)
+                addq.w  #1,d4
+                move.w  d3,d5
+                addq.w  #1,d5
+                mulu    d5,d4
+                add.l   d4,pr_ew
+                addq.w  #1,d2                   ; d2 = words per line
+                and.w   #1,d0
+                move.w  d0,er_hd                ; odd x0 : 1 word first
+                sub.w   d0,d2
+                move.w  d2,d0
+                and.w   #1,d0
+                move.w  d0,er_tl                ; last word alone
+                lsr.w   #1,d2                   ; long words
+                move.w  d2,d0
+                lsr.w   #3,d0
+                move.w  d0,er_g                 ; groups of 8 longs
+                and.w   #7,d2
+                move.w  d2,er_r                 ; remaining longs
+                move.w  d3,d0                   ; lines - 1
 .ly:            move.l  a0,a2
                 move.l  a1,a3
-                move.w  d2,d6
-.lx:            move.w  (a2)+,(a3)+
-                dbra    d6,.lx
-                lea     LINEB(a0),a0
+                tst.w   er_hd
+                beq.s   .h
+                move.w  (a2)+,(a3)+
+.h:             move.w  er_g,d1
+                bra.s   .g1
+.g:             movem.l (a2)+,d2-d7/a4-a5
+                movem.l d2-d7/a4-a5,(a3)
+                lea     32(a3),a3
+.g1:            dbra    d1,.g
+                move.w  er_r,d1
+                bra.s   .r1
+.r:             move.l  (a2)+,(a3)+
+.r1:            dbra    d1,.r
+                tst.w   er_tl
+                beq.s   .t
+                move.w  (a2)+,(a3)+
+.t:             lea     LINEB(a0),a0
                 lea     LINEB(a1),a1
-                dbra    d3,.ly
+                dbra    d0,.ly
+                movem.l (sp)+,d7/a4-a5
                 rts
 
 bb_reset:

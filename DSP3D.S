@@ -17,14 +17,17 @@ D3D_TMO         equ     200000                  ; max wait for the DSP (loops)
 ; D3PUT : sends a word to the DSP (a4 = $ffffa202, a5 = $ffffa204)
 D3PUT           macro
 .p\@:           btst    #1,(a4)
-                beq.s   .p\@
-                move.l  \1,(a5)
+                bne.s   .q\@
+                addq.l  #1,pr_dsp               ; (profiler : DSP not ready)
+                bra.s   .p\@
+.q\@:           move.l  \1,(a5)
                 endm
 ; D3GET : reads a word from the DSP (d3 = max wait ; too long : .ko)
 D3GET           macro
                 move.l  d3,d1
 .g\@:           btst    #0,(a4)
                 bne.s   .h\@
+                addq.l  #1,pr_dsp               ; (profiler : DSP not ready)
                 subq.l  #1,d1
                 bne.s   .g\@
                 bra     .ko
@@ -121,6 +124,7 @@ d3dput:
                 move.l  #D3D_TMO,d1
 .w:             btst    #1,$ffffa202.w
                 bne.s   .ok
+                addq.l  #1,pr_dsp               ; (profiler : DSP not ready)
                 subq.l  #1,d1
                 bne.s   .w
                 bra.s   d3dfail
@@ -135,6 +139,7 @@ d3dget:
                 move.l  #D3D_TMO,d1
 .w:             btst    #0,$ffffa202.w
                 bne.s   .ok
+                addq.l  #1,pr_dsp               ; (profiler : DSP not ready)
                 subq.l  #1,d1
                 bne.s   .w
                 bra.s   d3dfail
@@ -204,7 +209,7 @@ d3dbox:
                 btst    #23,d0
                 beq     .end                    ; $400000 : end
                 btst    #22,d0
-                bne.s   .frt                    ; $C00000 : front face
+                bne     .frt                    ; $C00000 : front face
                 moveq   #1,d2                   ; $800000 : face, 2 chains
 .ch:            D3GET   d0                      ; chain : segments of 5 words,
                 and.l   #$ffffff,d0             ;  0 at the end
@@ -214,7 +219,7 @@ d3dbox:
                 D3GET   (a0)+
                 D3GET   (a0)+
                 D3GET   (a0)+
-                bra.s   .ch
+                bra     .ch
 .ch2:           dbra    d2,.ch
                 bra     .rd
 .frt:           D3GET   (a0)+

@@ -44,6 +44,7 @@ respawn:
                 movem.l d7/a2,-(sp)
                 bsr     lz_reset
                 bsr     plat_reset              ; called lifts : back at the start
+                bsr     en_reset                ; enemies : back at their place
                 movem.l (sp)+,d7/a2
                 move.w  #-1,rick_onplat
                 move.w  #RICK_H,rk_h
@@ -171,7 +172,9 @@ check_window:
 .c1:            tst.w   d1
                 bpl.s   .c2
                 moveq   #0,d1
-.c2:            cmp.w   win_tx,d0
+.c2:            jsr     pre_snap                ; (row of the grid : PREBUILD.S)
+                jsr     bg_snap                 ; (row of a screen built in advance)
+                cmp.w   win_tx,d0
                 bne.s   .new
                 cmp.w   win_ty,d1
                 beq     .x

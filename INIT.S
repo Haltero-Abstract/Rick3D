@@ -21,7 +21,7 @@ start:
                 lea     12(sp),sp
 
                 ; welcome page : title, credits, keys (ACCUEIL.S)
-                bsr     infopage
+                jsr     infopage
                 tst.w   d0
                 bpl.s   .jeu
                 clr.w   -(sp)                   ; ESC : Pterm0
@@ -120,6 +120,7 @@ start:
                 move.w  #$2700,sr
                 move.l  $118.w,old_acia
                 move.l  #my_acia,$118.w
+                jsr     prof_install            ; Timer D : profiler clock (key T)
                 move.w  #$2300,sr
                 pea     ikbd_joy
                 clr.w   -(sp)
@@ -140,15 +141,18 @@ start:
                 clr.w   fps
 
                 move.w  #1,cur_back             ; scr0 shown, we draw in scr1
-                bsr     ts_backup               ; built-in tile set (for each level)
-                bsr     kt_init                 ; keyboard tables (name entry)
+                jsr     ts_backup               ; built-in tile set (for each level)
+                jsr     kt_init                 ; keyboard tables (name entry)
                 bsr     save_read               ; RICK3D.SAV : position + high scores
-                bra     game_menu               ; level menu, then the level (MENUS.S)
+                jmp     game_menu               ; level menu, then the level (MENUS.S)
 
 ;---------------------------------------------------------------------
 main_loop:
+                PROF    PR_VBL                  ; (profiler : end of the frame)
                 tst.w   game_end                ; game over / end of the level :
-                bne     end_game                ;  name, high scores, menu
+                beq.s   .nge                    ;  name, high scores, menu
+                jmp     end_game
+.nge:
                 bsr     do_keys
                 tst.w   quit_flag
                 bne     quit
@@ -157,10 +161,15 @@ main_loop:
                 bsr     update_plats
                 bsr     update_rick
                 bsr     update_objs
+                bsr     update_enemies
                 bsr     update_lasers
+                PROF    PR_LOG
                 tst.w   need_rebuild
                 bne.s   .rb
                 tst.w   items_dirty             ; canister picked up : scenery to rebuild
+                beq.s   .nr
+                clr.w   items_dirty             ; (plates broken : only their
+                jsr     bg_dirty                ;  area, in the background)
                 beq.s   .nr
 .rb:            clr.w   items_dirty
                 move.w  sc_glide,d0             ; step : keep the old
@@ -174,7 +183,8 @@ main_loop:
                 bsr     glide
                 clr.w   sc_glide
                 clr.w   sc_vglide
-.nr:            bsr     back_ptrs
+.nr:            PROF    PR_BLD
+                bsr     back_ptrs
                 tst.w   L_FULL(a4)              ; new scenery : the whole screen
                 beq.s   .np
                 clr.w   L_FULL(a4)
@@ -188,8 +198,10 @@ main_loop:
                 bge.s   .nb1e
                 clr.w   (a5)
 .nb1e:          bsr     erase_list
+                jsr     spr_erase               ; cached sprites : their spans
 .nb1:           move.l  a4,cur_list             ; new list of rectangles
                 clr.w   L_CNT(a4)
+                clr.w   L_SN(a4)
                 move.w  #32767,L_YMIN(a4)
                 move.w  #-32768,L_YMAX(a4)
                 move.w  #HUD_H,clip_y0          ; moving objects : never on the
@@ -199,13 +211,23 @@ main_loop:
                 move.w  txt_y,d0
                 subq.w  #1,d0
                 move.w  d0,clip_y1
-.cl:            bsr     bb_reset
+.cl:            PROF    PR_ERA
+                bsr     bb_reset
+                move.w  #1,spr_rec              ; (cached sprites : noted)
                 bsr     draw_zaps               ; (behind Rick)
+                PROF    PR_ZAP
                 bsr     draw_plats
+                PROF    PR_PLT
+                bsr     draw_enemies
+                PROF    PR_ENM
                 bsr     draw_rick
                 bsr     bb_push
+                PROF    PR_RIK
                 bsr     draw_lasers
+                PROF    PR_LAS
                 bsr     draw_objs
+                PROF    PR_OBJ
+                clr.w   spr_rec
                 clr.w   clip_y0                 ; scenery : the whole screen
                 move.w  #SCR_H-1,clip_y1
                 bsr     back_ptrs
@@ -219,7 +241,11 @@ main_loop:
 .nb3:           bsr     hud_update
                 bsr     back_ptrs
                 bsr     text_update
+                PROF    PR_HUD
+                jsr     bg_run                  ; next screen in the background
+                PROF    PR_BLD                  ;  (with the time left in the frame)
                 bsr     flip
+                jsr     bg_fmark                ; (start of the frame : time)
                 bsr     countfps
                 bsr     sfx_update              ; YM sound effects (1 step / frame)
                 tst.b   MGTK_Restart_Done       ; end of the module : next one
@@ -248,6 +274,7 @@ vb_loop:
 .step:          bsr     update_plats            ; the game goes on
                 bsr     update_rick
                 bsr     update_objs
+                bsr     update_enemies
                 bsr     update_lasers
                 bsr     sfx_update
                 subq.w  #1,bv_steps
@@ -295,7 +322,9 @@ quit:
                 addq.l  #8,sp
                 move.w  #$2700,sr
                 move.l  old_acia,$118.w
+                jsr     prof_remove
                 move.w  #$2300,sr
+                jsr     prof_save               ; RICK3D.LOG (profiler)
 .flush:         move.w  #11,-(sp)               ; empties the keyboard buffer
                 trap    #1
                 addq.l  #2,sp
@@ -331,6 +360,7 @@ quit:
                 movem.l old_stpal,d0-d7
                 movem.l d0-d7,$ffff8240.w
 
+                jsr     pre_free                ; (screens built : memory back)
                 move.l  scr_mem,-(sp)           ; Mfree
                 move.w  #$49,-(sp)
                 trap    #1

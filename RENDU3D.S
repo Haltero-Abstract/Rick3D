@@ -9,6 +9,7 @@
 ; Only the faces turned towards the camera are drawn, and only
 ; those allowed by box_mask (1 left 2 right 4 top 8 bottom).
 draw_box:
+                BGCHK                           ; (background build : pause ?)
                 movem.l d0-d7/a0-a1,-(sp)
                 tst.w   view_back               ; back view : axes swapped
                 beq.s   .std

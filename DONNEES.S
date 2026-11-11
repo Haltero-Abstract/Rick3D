@@ -36,6 +36,12 @@ t_glon:         dc.b    'MAP SCROLLING : ON (G)',0
 t_gloff:        dc.b    'MAP SCROLLING : OFF (G)',0
 t_d3don:        dc.b    '3D MATHS : DSP (D)',0
 t_d3doff:       dc.b    '3D MATHS : 030 (D)',0
+t_preb:         dc.b    'SCREENS : ',0
+t_prew:         dc.b    'PLEASE WAIT...',0
+t_prec:         dc.b    'UNDER CONSTRUCTION',0
+t_prenomem:     dc.b    'LOW MEMORY : SCREENS BUILT IN GAME',0
+t_spron:        dc.b    'CHARACTERS : CACHED SPRITES (S)',0
+t_sproff:       dc.b    'CHARACTERS : 3D DRAWING (S)',0
 t_d3dno:        dc.b    'NO DSP : 3D MATHS ON THE 030',0
 t_norec:        dc.b    'NO POSITION : PRESS R TO SAVE ONE',0
 t_lvlname:      dc.b    'HYDE PARK',0,0,0       ; (12 bytes : MENUS.S)
@@ -128,7 +134,7 @@ ico_dyn:        dc.w    $0000,$0000,$0000,$0000,$FF27,$0000,$0000,$0000
 ; if it exists (file made by OUTILS\EDITEUR.HTML, same layout)
 ;=====================================================================
 tileset:        dc.b    'R3DT'
-                dc.w    7                       ; version (1 without plate, 2 without objects, 3 without models, 4/5 : 13/22 models, 6 without portholes)
+                dc.w    8                       ; version (8 : + enemies ; 1 without plate, 2 without objects, 3 without models, 4/5 : 13/22 models, 6 without portholes)
 ; front faces of the blocks : 10x10 patterns (RGB565)
 pat_rock:       dc.w    $6B31,$41EA,$4A4D,$4A4D,$4A4D,$6B31,$41EA,$4A4D,$4A4D,$4A4D
                 dc.w    $41EA,$4A4D,$4A4D,$4A4D,$6B31,$41EA,$4A4D,$4A4D,$4A4D,$6B31
@@ -439,6 +445,55 @@ wn_dep:         dc.w    16                         ; depth of the tunnel behind 
 wn_dens:        dc.w    20                         ; one star per n square units (0 = none)
 wn_rsp:         dc.w    8                          ; gap between the rivets (0 = none)
 wn_refl:        dc.w    1                          ; reflections on the glass (0 = no)
+ts_v7_end:                                     ; (end of version 7)
+; version 8 : ENEMIES (ENNEMIS.S) : 5 colour sets (setptr 37..41), then
+;   (+ 41 cream, then) their models (16 boxes max, same layout and animation bits as Rick)
+col_enbody:     dc.w    $D365,$9222,$F50A,$6161    ; guard robot : copper body
+col_enband:     dc.w    $94B5,$5AED,$CE5A,$39E8    ;  grey bands
+col_envisor:    dc.w    $3E47,$1C03,$7F8F,$12C2    ;  green visor
+col_endark:     dc.w    $6982,$40E1,$9283,$28A0    ;  dark copper (legs, far arm)
+col_encream:    dc.w    $F6B5,$B4F0,$FFBA,$8BAC    ; bell droid : cream band
+mdl_en1side:   ; Enemy 1 (London guard robot) : side view, looks right
+                dc.w    2,0,10,6,-4,4,37,0
+                dc.w    1,1,11,5,-3,3,37,0
+                dc.w    1,5,11,7,-4,4,38,0
+                dc.w    8,2,12,5,-3,3,39,0
+                dc.w    2,7,10,14,-4,4,37,0
+                dc.w    1,11,11,13,-5,5,38,0
+                dc.w    4,8,7,13,4,6,40,2048
+                dc.w    3,14,6,20,1,4,40,512
+                dc.w    6,14,9,20,-4,-1,40,256
+                dc.w    2,18,6,20,1,4,38,512
+                dc.w    6,18,10,20,-4,-1,38,256
+                dc.w    4,8,7,12,-6,-4,37,1024
+                dc.w    4,12,7,14,-6,-4,38,1024
+                dc.w    4,-1,6,0,-1,1,38,0
+                dc.w    -99
+                dcb.w   15,0
+mdl_en1climb:  ; Enemy 1 : on a ladder (seen from behind)
+                dc.w    2,0,10,5,-4,4,37,0
+                dc.w    1,5,11,7,-4,4,38,0
+                dc.w    2,7,10,14,-4,4,37,0
+                dc.w    2,11,10,13,-5,5,38,0
+                dc.w    0,4,2,10,-2,2,37,24576
+                dc.w    0,3,2,4,-2,2,38,24576
+                dc.w    10,4,12,10,-2,2,37,20480
+                dc.w    10,3,12,4,-2,2,38,20480
+                dc.w    3,14,6,20,-2,2,40,4096
+                dc.w    6,14,9,20,-2,2,40,8192
+                dc.w    -99
+                dcb.w   47,0
+mdl_en2side:   ; Enemy 2 (small bell droid) : looks right
+                dc.w    4,18,8,20,-2,2,40,0
+                dc.w    0,15,12,18,-5,5,37,0
+                dc.w    0,14,12,15,-5,5,41,0
+                dc.w    1,12,11,14,-4,4,18,0
+                dc.w    2,9,10,12,-4,4,37,0
+                dc.w    9,10,12,13,-3,3,39,0
+                dc.w    5,7,7,9,-1,1,38,0
+                dc.w    5,6,7,7,-1,1,37,0
+                dc.w    -99
+                dcb.w   63,0
 tileset_end:
 TILESET_SZ      equ     tileset_end-tileset
 TILESET_V1      equ     ts_v1_end-tileset
@@ -447,9 +502,10 @@ TILESET_V3      equ     ts_v3_end-tileset
 TILESET_V4      equ     mdl_walkway-tileset    ; (version 4 : 13 models)
 TILESET_V5      equ     mdl_zapemit-tileset    ; (version 5 : 22 models)
 TILESET_V6      equ     ts_v6_end-tileset      ; (version 6 : without the portholes)
+TILESET_V7      equ     ts_v7_end-tileset      ; (version 7 : without the enemies)
 BV_OFS          equ     bv_rock-tileset         ; colours of the back view (missing
 BV_SZ           equ     3*8                     ;  from the editor files before v7)
-ts_sizes:       dc.l    TILESET_V1,TILESET_V2,TILESET_V3,TILESET_V4,TILESET_V5,TILESET_V6,TILESET_SZ
+ts_sizes:       dc.l    TILESET_V1,TILESET_V2,TILESET_V3,TILESET_V4,TILESET_V5,TILESET_V6,TILESET_V7,TILESET_SZ
 MDL_SZ          equ     256                     ; a model = 16 boxes x 8 words
 
 setptr:         ; colour sets by index (same order as the editor)
@@ -490,7 +546,13 @@ setptr:         ; colour sets by index (same order as the editor)
                 dc.l    col_pack
                 dc.l    col_hair
                 dc.l    col_eye
+                dc.l    col_enbody              ; 37.. : enemies (version 8)
+                dc.l    col_enband
+                dc.l    col_envisor
+                dc.l    col_endark
+                dc.l    col_encream             ; 41
 box_mask:       dc.w    15                         ; allowed faces (draw_box)
+spr_on:         dc.w    SPR_ON_INIT                ; cached sprites (S key, SPRITES.S)
 pipe_tab:       ; 16 cases (neighbours L=1 R=2 U=4 D=8) x 4 quarters (top-l, top-r, bottom-l, bottom-r) : shade 0..3, -1 = empty
                 dc.b    1,1,1,1    ; 0
                 dc.b    1,1,0,0    ; 1

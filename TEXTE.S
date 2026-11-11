@@ -34,6 +34,7 @@ text_update:
 .cmp:           cmp.w   (a0)+,(a1)+
                 dbne    d0,.cmp
                 beq.s   .x
+                bra     draw_cells              ; only the changed characters
 .draw:          lea     linebuf,a0
                 lea     2(a3),a1
                 move.w  #2*LINEW/2-1,d0
@@ -49,6 +50,8 @@ build_lines:
 .sp:            move.b  #' ',(a0)+
                 dbra    d0,.sp
                 lea     linebuf,a0
+                tst.w   prof_on                 ; profiler (T) : its 2 lines
+                bne     prof_lines
                 lea     t_fps,a1
                 bsr     puts
                 move.w  fps,d0
@@ -242,4 +245,85 @@ draw_band:
                 dbra    d4,.fl
 .nc:            lea     12(a4),a4               ; next column (6 pixels)
                 dbra    d7,.ch
+                rts
+
+; draw_cells : the bar is already shown (a3 = its state) : only the
+;   characters that changed are redrawn (darkened scenery + character)
+draw_cells:
+                movem.l d0-d7/a0-a5,-(sp)
+                move.w  txt_y,d0
+                mulu    #LINEB,d0
+                move.l  d0,d6                   ; d6 = offset of the bar
+                lea     linebuf,a2
+                lea     2(a3),a5
+                moveq   #0,d7
+.lp:            move.b  (a2,d7.w),d0
+                cmp.b   (a5,d7.w),d0
+                beq     .nx
+                move.b  d0,(a5,d7.w)
+                move.w  d7,d1                   ; column, line
+                move.l  #LINEB+2,d2             ; line 1 : y+1
+                cmp.w   #LINEW,d1
+                blo.s   .l1
+                sub.w   #LINEW,d1
+                move.l  #8*LINEB+2,d2           ; line 2 : y+8
+.l1:            cmp.w   #COLS,d1
+                bhs     .nx
+                mulu    #12,d1
+                add.l   d1,d2
+                add.l   d6,d2                   ; offset of the cell
+                lea     bgbuf,a0
+                adda.l  d2,a0
+                lea     (a6,d2.l),a4
+                move.l  a4,a1
+                move.l  #$7bef7bef,d3
+                moveq   #6,d4                   ; 7 lines x 6 pixels
+.dk:            move.l  (a0),d1
+                lsr.l   #1,d1
+                and.l   d3,d1
+                move.l  d1,(a1)
+                move.l  4(a0),d1
+                lsr.l   #1,d1
+                and.l   d3,d1
+                move.l  d1,4(a1)
+                move.l  8(a0),d1
+                lsr.l   #1,d1
+                and.l   d3,d1
+                move.l  d1,8(a1)
+                lea     LINEB(a0),a0
+                lea     LINEB(a1),a1
+                dbra    d4,.dk
+                moveq   #0,d0                   ; character
+                move.b  (a5,d7.w),d0
+                cmp.w   #' ',d0
+                bls.s   .nx
+                sub.w   fontfirst,d0
+                bmi.s   .nx
+                add.w   d0,d0
+                move.l  fontoff,a1
+                move.w  (a1,d0.w),d3
+                move.w  d3,d0
+                lsr.w   #3,d0
+                move.l  fontdat,a1
+                adda.w  d0,a1
+                and.w   #7,d3
+                moveq   #5,d4
+.fl:            move.b  (a1),d2
+                lsl.w   #8,d2
+                move.b  1(a1),d2
+                lsl.w   d3,d2
+                moveq   #5,d5
+                move.l  a4,a0
+.pb:            add.w   d2,d2
+                bcc.s   .p0
+                move.w  #$ffff,(a0)
+.p0:            addq.l  #2,a0
+                dbra    d5,.pb
+                lea     LINEB(a4),a4
+                adda.w  fontw,a1
+                dbra    d4,.fl
+.nx:            addq.w  #1,d7
+                cmp.w   #2*LINEW,d7
+                blo     .lp
+                movem.l (sp)+,d0-d7/a0-a5
                 rts

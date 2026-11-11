@@ -22,7 +22,7 @@ game_menu:
                 tst.w   quit_flag
                 bne     quit
                 bsr     start_level
-                bra     main_loop
+                jmp     main_loop
 
 end_game:
                 clr.w   view_back
@@ -58,6 +58,8 @@ start_level:
                 bpl.s   .cp
                 bsr     load_tiles
                 bsr     load_level
+                jsr     spr_flush               ; new models / colours : sprites again
+                jsr     pre_load                ; all the screens built (PREBUILD.S)
                 move.w  cur_level,d0            ; name in the HUD
                 subq.w  #1,d0
                 mulu    #12,d0
@@ -407,7 +409,7 @@ hs_enter:
                 bsr     flip
                 tst.w   quit_flag               ; ESC : the name as it is
                 bne.s   .ok
-                bsr     getkey
+                jsr     getkey
                 tst.w   d0
                 bmi     .lp
                 cmp.w   #$1c,d0                 ; return / enter : ok
@@ -524,7 +526,7 @@ hs_page:
                 moveq   #1,d7
                 move.w  #218,d1
                 bsr     put_center
-                bsr     flip
+                jsr     flip
                 subq.w  #1,hs_t
                 beq.s   .x
                 tst.w   quit_flag
@@ -532,7 +534,7 @@ hs_page:
                 bsr     mjoy
                 btst    #7,d1
                 bne.s   .x
-                bsr     getkey
+                jsr     getkey
                 tst.w   d0
                 bmi     .lp
                 cmp.w   #$39,d0
@@ -548,7 +550,7 @@ hs_page:
 ;---------------------------------------------------------------------
 ; page_clear : hidden screen (a6) all black
 page_clear:
-                bsr     back_ptrs
+                jsr     back_ptrs
                 move.l  a6,a0
                 moveq   #0,d0
                 move.w  #SCRSZ/32-1,d1

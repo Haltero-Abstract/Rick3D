@@ -40,29 +40,47 @@ fire_laser:
 ; throw_bomb : fire + down diagonal -> the bomb slides away
 ;   in front of Rick (direction rick_dir) up to a wall or a plate
 throw_bomb:
+                tst.w   bomb_st                 ; bomb already out : never
+                bne.s   .x                      ;  re-launch it (no 2nd slide)
                 bsr     drop_bomb
                 tst.w   bomb_st
                 beq.s   .x
                 move.w  rick_dir,d0
                 muls    #BOMB_SPD,d0
                 move.w  d0,bomb_vx
+                move.w  #BOMB_DIST,bomb_d
 .x:             rts
 
 ; bomb_slide : moves the thrown bomb, makes it fall if there is no floor
 bomb_slide:
-                movem.l d0-d2,-(sp)
-                move.w  bomb_y,d1               ; no floor below : falls
-                addq.w  #6,d1
-                move.w  bomb_x,d0
-                addq.w  #2,d0
-                move.w  plat_hit,-(sp)
-                bsr     floor_px                ; (moving platforms included)
-                move.w  (sp)+,plat_hit
-                tst.w   d2
+                movem.l d0-d3/a0,-(sp)
+                move.w  bomb_plat,d0            ; on a moving platform : it
+                bmi.s   .np                     ;  carries the bomb (like Rick)
+                mulu    #PL_SIZE,d0
+                lea     plats,a0
+                add.l   d0,a0
+                move.w  PL_DX(a0),d0
+                add.w   d0,bomb_x
+                move.w  PL_DY(a0),d0
+                add.w   d0,bomb_y
+.np:            bsr     bomb_floor              ; floor under the bomb ?
                 bne.s   .sol
-                addq.w  #2,bomb_y
+                move.w  bomb_vy,d3              ; no : falls (gravity), pixel
+                cmp.w   #BOMB_FALLMAX,d3        ;  by pixel so that it lands
+                bge.s   .f1                     ;  ON the 1st row of a tile
+                addq.w  #1,d3
+                move.w  d3,bomb_vy
+.f1:            addq.w  #1,bomb_y
+                bsr     bomb_floor
+                bne.s   .land
+                subq.w  #1,d3
+                bne.s   .f1
                 bra.s   .x
-.sol:           move.w  bomb_vx,d2
+.land:          clr.w   bomb_vy
+                clr.w   bomb_vx                 ; after a fall : stops there
+                bra.s   .x
+.sol:           clr.w   bomb_vy
+                move.w  bomb_vx,d2
                 beq.s   .x
                 move.w  bomb_x,d0               ; wall in front ?
                 add.w   d2,d0
@@ -75,9 +93,31 @@ bomb_slide:
                 bne.s   .stop
                 move.w  bomb_vx,d2              ; (solid_px returns d2)
                 add.w   d2,bomb_x
-                bra.s   .x
+                tst.w   d2
+                bpl.s   .dp
+                neg.w   d2
+.dp:            move.w  bomb_d,d3               ; fixed slide distance
+                sub.w   d2,d3                   ;  (counted in px moved)
+                move.w  d3,bomb_d
+                bgt.s   .x
 .stop:          clr.w   bomb_vx
-.x:             movem.l (sp)+,d0-d2
+.x:             movem.l (sp)+,d0-d3/a0
+                rts
+
+; bomb_floor : floor under the bomb (same test as Rick) -> Z = 0 if floor
+bomb_floor:
+                move.w  bomb_y,d1
+                addq.w  #6,d1
+                move.w  bomb_x,d0
+                move.w  plat_hit,-(sp)
+                move.w  #-1,plat_hit
+                bsr     floor_px                ; (moving platforms included)
+                bne.s   .f
+                addq.w  #3,d0                   ; (other side of the bomb,
+                bsr     floor_px                ;  like Rick's 2 feet)
+.f:             move.w  plat_hit,bomb_plat      ; (-1 : fixed floor or none)
+                move.w  (sp)+,plat_hit
+                tst.w   d2
                 rts
 
 drop_bomb:
@@ -89,6 +129,8 @@ drop_bomb:
                 beq.s   .x
                 subq.w  #1,ammo_bomb
                 clr.w   bomb_vx                 ; dropped (throw_bomb throws it)
+                clr.w   bomb_vy
+                move.w  #-1,bomb_plat
                 move.w  #1,bomb_st
                 move.w  #BOMB_FUSE,bomb_t
                 move.w  rick_xf,d0

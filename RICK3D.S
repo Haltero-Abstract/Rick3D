@@ -37,6 +37,7 @@
 ;   PLATEF.S    platforms, lifts, buttons
 ;   PIEGES.S    trap lasers, beams, canisters
 ;   ARMES.S     Rick's laser and bomb           SONS.S      YM sound effects
+;   ENNEMIS.S   all the enemies (types, behaviours, drawing)
 ;   MUSIQUE.S   DSP replay                      DONNEES.S   colours, texts...
 ;   DSP3D.S     3D maths by the DSP (R3D.P56, source OUTILS\R3D.A56)
 ;   VARIABLE.S  variables (BSS)                 AMIGADSP.S  Simplet's replay
@@ -56,6 +57,7 @@ PT              macro
 ;=====================================================================
                 section text
 ;=====================================================================
+                include 'PROFIL.S'
                 include 'INIT.S'
                 include 'CLAVIER.S'
                 include 'ECRAN.S'
@@ -70,11 +72,17 @@ PT              macro
                 include 'PLATEF.S'
                 include 'PIEGES.S'
                 include 'ARMES.S'
+                include 'ENNEMIS.S'
                 include 'SONS.S'
                 include 'MUSIQUE.S'
                 include 'DSP3D.S'
                 include 'ACCUEIL.S'
                 include 'MENUS.S'
+                include 'PROFIL.S'
+                include 'SPRITES.S'
+                include 'ZIGZAG.S'
+                include 'BGBUILD.S'
+                include 'PREBUILD.S'
 
 ;=====================================================================
                 section data
